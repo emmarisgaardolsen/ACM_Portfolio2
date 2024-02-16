@@ -1,2 +1,27 @@
-# ACM_Portfolio2
-Repository for portfolio assignment two in the course Advanced Cognitive Modeling on the 2nd semester of the Cognitive Science MSc at Aarhus University, spring semester of 2024.
+<!-- PROJECT LOGO -->
+<br />
+<p align="center">
+  
+  <h1 align="center">Stan Implementation of Cognitive Strategies in Mathcing Pennies Game</h1> 
+  <h2 align="center"><i>Portfolio 2 - Advanced Cognitive Modelling 2024</i></h2> 
+  <h3 align="center">Cognitive Science // Aarhus University</h3>
+
+
+  <p align="center">
+    Emma Risgaard Olsen <br> Nanna Marie Steenholdt <br> Jørgen Højlund Wibe
+  </p>
+</p>
+
+
+<!-- ABOUT THE PROJECT -->
+## About the project 🤷‍♂️
+This repository is part of the portfolio exam in Advanced Cognitive Modelling at Aarhus University. It contains the code necesarry to reproduce the simulations of two different strategies in the simple game 'Mathcing Pennies Game'.
+
+<!-- USAGE -->
+## Usage ✅
+To replicate the results, 1) clone the repository to your local desktop or cloud service and 2) run the `ACM_agents.Rmd` file in your preferred IDE. 
+
+```
+git clone https://github.com/jorgenhw/Assignment_1_ACM.git
+cd Assignment_1_ACM
+```
