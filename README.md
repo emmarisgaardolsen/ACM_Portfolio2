@@ -22,6 +22,6 @@ This repository is part of the portfolio exam in Advanced Cognitive Modelling at
 To replicate the results, 1) clone the repository to your local desktop or cloud service and 2) run the `ACM_agents.Rmd` file in your preferred IDE. 
 
 ```
-git clone https://github.com/jorgenhw/Assignment_1_ACM.git
+git clone https://github.com/emmarisgaardolsen/ACM_Portfolio2.git
 cd Assignment_1_ACM
 ```
