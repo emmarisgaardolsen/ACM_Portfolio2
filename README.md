@@ -2,7 +2,7 @@
 <br />
 <p align="center">
   
-  <h1 align="center">Stan Implementation of Cognitive Strategies in Mathcing Pennies Game</h1> 
+  <h1 align="center">Stan Implementation of Cognitive Strategies in Matching Pennies Game</h1> 
   <h2 align="center"><i>Portfolio 2 - Advanced Cognitive Modelling 2024</i></h2> 
   <h3 align="center">Cognitive Science // Aarhus University</h3>
 
