@@ -88,16 +88,17 @@ RL_agent_f <- function(value, alpha, theta, feedback) {
 
 ## Noisy WSLS Agent 
 ```{r Noisy WSLS Agent}
-# WSLS Agent function with noise (tiredness)
+
+# WSLS Agent function with noise 
 WSLSAgentNoise_f <- function(prevChoice, Feedback, noise){
-  # Win-Stay-Lose-Shift Strategy
+
   if (Feedback == 1) {
     choice <- prevChoice
   } else if (Feedback == 0) {
     choice <- 1 - prevChoice
   }
   
-  # Applying noise (tiredness)
+  # applying noise
   if (rbinom(1, 1, noise) == 1) {
     choice <- rbinom(1, 1, 0.5)
   }
@@ -109,38 +110,38 @@ WSLSAgentNoise_f <- function(prevChoice, Feedback, noise){
 ## Simulating Data: The Two Agents Playing Against Each Other, One game is 120 trials, they play 20 games.
 
 ```{r}
-# Parameters for the RL Agent
-alpha <- 0.1  # Learning rate
-theta <- 0.5  # Temperature parameter for softmax
+# parameters for the RL Agent
+alpha <- 0.1  # learning rate
+theta <- 0.5  # temperature parameter for softmax
 
-# Parameters for the Noisy WSLS Agent
-noise <- 0.1  # Probability of choosing randomly due to noise
+# parameters for the noisy WSLS Agent
+noise <- 0.1  # probability of choosing randomly due to noise
 
-# Number of games and trials
+# number of games and trials
 num_games <- 20
 num_trials <- 120
 
-# Store results
+# store results
 results <- list()
 
 for (game in 1:num_games) {
-  # Initial values for both agents
-  RL_value <- c(0.5, 0.5)  # Initial expected values for RL Agent
-  WSLS_prevChoice <- sample(c(0, 1), size = 1)  # Initial choice for WSLS Agent
-  WSLS_Feedback <- 0  # Initial feedback (assume loss)
+  # initial values for both agents
+  RL_value <- c(0.5, 0.5)  # initial expected values for RL Agent
+  WSLS_prevChoice <- sample(c(0, 1), size = 1)  # initial choice for WSLS Agent
+  WSLS_Feedback <- 0  # initial feedback (assume loss)
   
   game_results <- list()
   
   for (trial in 1:num_trials) {
-    # RL Agent makes a choice and updates values
+    # RL agent makes a choice and updates values
     RL_outcome <- RL_agent_f(RL_value, alpha, theta, WSLS_Feedback)
     RL_choice <- RL_outcome$choice
     RL_value <- RL_outcome$updatedValue
     
-    # Noisy WSLS Agent makes a choice
+    # noisy WSLS Agent makes a choice
     WSLS_choice <- WSLSAgentNoise_f(WSLS_prevChoice, WSLS_Feedback, noise)
     
-    # Determine feedback based on choices (simple rule: same choice = win, different choice = lose)
+    # determine feedback based on choices (simple rule: same choice = win, different choice = lose)
     if (RL_choice == WSLS_choice) {
       RL_Feedback <- 1  # Win
       WSLS_Feedback <- 1
@@ -149,10 +150,10 @@ for (game in 1:num_games) {
       WSLS_Feedback <- 0
     }
     
-    # Update WSLS's previous choice
+    # update WSLS's previous choice
     WSLS_prevChoice <- WSLS_choice
     
-    # Record trial results
+    # record trial results
     game_results[[trial]] <- list(RL_choice = RL_choice, WSLS_choice = WSLS_choice, RL_Feedback = RL_Feedback, WSLS_Feedback = WSLS_Feedback)
   }
   
@@ -174,7 +175,6 @@ library(dplyr)
 ```{r}
 library(ggplot2)
 
-# Assuming you're interested in visualizing the choices for a specific game, e.g., Game 1
 ggplot(results_df[results_df$Game == 1, ], aes(x = Trial)) +
   geom_line(aes(y = RL_Choice, color = "RL Agent"), size = 1) +
   geom_line(aes(y = WSLS_Choice, color = "Noisy WSLS Agent"), size = 1) +
