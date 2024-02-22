@@ -1,0 +1,131 @@
+---
+title: "Portfolio_2_ACM_JW"
+output: html_document
+date: "2024-02-22"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+pacman::p_load(tidyverse)
+```
+
+# Portfolio 2
+
+**Model**: Reinforcement learning Model
+
+Parameters:
+* Memory (gamma) # how much the agent remembers the past
+* Learning Rate (alpha) # how much the agent learns from the past
+* Rate (theta) # the rate of the choice of the action
+* 
+
+### Activation functions
+```{r activation functions}
+softmax <- function(x, tau) {
+  outcome = 1 / (1 + exp(-tau * x))
+  return(outcome)
+}
+
+relu <- function(x) {
+    outcome = pmax(0, x)
+    return(outcome)
+}
+```
+
+```{r}
+"""
+This function is designed to update the values of a two-element vector based on a learning rate (alpha), a binary decision (choice), and some feedback
+"""
+
+ValueUpdate = function(value, alpha, choice, feedback) {
+    """
+    parameters:
+    value: a two-element vector representing the current value of two options. 
+    alpha: the learning rate
+    choice: the action taken
+    feedback: the feedback received
+    """
+  
+  PE <- feedback - value # the prediction error 
+  
+  v1 <- value[1] + alpha * (1 - choice) * (feedback - value[1]) # value 1 = current estimate of some value, feedback = new information received, alpha = learning rate, choice is the action taken
+
+  v2 <- value[2] + alpha * (choice) * (feedback - value[2]) 
+  
+  updatedValue <- c(v1, v2)
+  
+  return(updatedValue)
+}
+```
+
+```{r}
+# parameters
+agents <- 100
+trials <- 120
+
+# 
+value <- c(0,0)
+alpha <- 0.9
+temperature <- 1 # how much the agent explores the environment (high temperature = more exploration)
+choice <- 0 # the action taken
+feedback <- -1 # the feedback received
+p <- 0.9
+
+# Initial values
+ValueUpdate(value, alpha, choice, feedback)
+
+d <- tibble(trial = rep(NA, trials),
+            choice = rep(NA, trials), 
+            value1 = rep(NA, trials), 
+            value2 = rep(NA, trials), 
+            feedback = rep(NA, trials))
+
+Bot <- rbinom(trials, 1, p) # the bot's choice
+
+for (i in 1:trials) {
+    """
+    This loop is designed to simulate a series of trials, where a choice is made, feedback is received, and a value is updated based on that feedback.
+    """
+    choice <- 1 #rbinom(1, 1, softmax(value[2] - value[1], temperature))
+    feedback <- ifelse(Bot[i] == choice, 1, -1)
+    value <- ValueUpdate(value, alpha, choice, feedback)
+    d$choice[i] <- choice
+    d$value1[i] <- value[1]
+    d$value2[i] <- value[2]
+    d$feedback[i] <- feedback
+}
+
+d <- d %>% mutate(
+  trial = seq(trials),
+  prevFeedback = lead(feedback))
+
+print(d)
+
+ggplot(subset(d, trial < 21)) + 
+  geom_line(aes(trial, value1), color = "green") + 
+  geom_line(aes(trial, value2), color = "blue") +
+  geom_line(aes(trial, prevFeedback), color = "red") +
+  theme_bw()
+```
+
+
+
+```{r simlating data}
+# simulating data
+set.seed(123)
+
+# number of trials
+ntrials <- 100
+
+# number of agents
+nagents <- 200
+
+# learning rate
+alpha <- 0.1
+
+# memory
+memory_gamma <- 0.5
+
+rbinom(1,1,0.5)
+```
