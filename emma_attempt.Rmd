@@ -1,0 +1,188 @@
+---
+title: "ACM Portfolio 2 - Reinforcement Learning Agent"
+author: "EOL"
+date: "2024-02-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Reinforcement Learning Agent
+We define 3 functions: 
+
+The first is the `softmax function` used to calculate the probability of choosing a particular hand at a given trial. At a given trial, the agent's choice is probabilistically determined by a softmax function that calculates the probability of choosing a particular hand (left or right) based on the current expected values of choosing left or right, respectively. The temperature parameter in the softmax function, theta, determines the agent's level of exploiration vs. exploitation. A higher temperature value leads to more exploration, while a lower temperature value leads to more exploitation. So the `softmax function` converts the expected values into probabilities that sum up to 1. (NB: could also be exchanged with a RELU function we could try???).
+
+```{r softmax function}
+
+softmax_f <- function(exp_values, theta) {
+  probabilities <- exp(exp_values * theta) / sum(exp(exp_values * theta))
+  return(probabilities) 
+}
+
+```
+
+Moreover, the expected values are updated at each trial using the Rescorla-Wagner learning rule, which is a simple model of associative learning. According to the Rescorla-Wagner rule, the expected values are updated based on the prediciton error on the previous trial, which is the difference between the outcome (i.e., feedback) and the expected value. The learning rate, alpha, determines the extent to which the expected values are updated at each trial.
+
+Below, the Rescorla Wagner learning rule is implemented. It updates the expected value for the chosen option based on the received feedback, using the prediction error and a learning rate.
+
+The function contains the following elements:
+- `value`: a vector of the expected values for the two options (0/1, corresponding to left and right). The values are updated at each trial based on the feedback received. We can access value[1] and value[2].
+- `alpha`: the learning rate, which determines the extent to which the expected values are updated at each trial. We define it later when we simulate the data.
+- `choice`: the choice made at the current trial, which is a binary value (0/1, corresponding to left and right).
+- `feedback`: received for the choice made in the previous trial, and it is a scalar value indicating the outcome (0 for incorrect, 1 for correct).
+- `PE`: the prediction error, which is the difference between the feedback and the expected value of the chosen option. I.e., how much the agent was "surprised" by the feedback. 
+- `value[1]`: represents the expected value of choosing the left hand
+- `value[2]`: represents the expected value of choosing the right hand.
+
+
+```{r Rescorla-Wagner learning rule}
+
+ValueUpdate_f <- function(value, alpha, choice, feedback) {
+  PE <- feedback - value
+  
+  v1 <- value[1] + alpha * (1 - choice) * (feedback - value[1])
+  v2 <- value[2] + alpha * choice * (feedback - value[2])
+  
+  updatedValue <- c(v1, v2)
+  
+  return(updatedValue)
+}
+
+```
+
+
+The main agent function that simulates the agent's choices and updates the expected values at each trial.
+
+The function below contains the following parameters:
+- `value`: a vector of the expected values for the two options (0/1, corresponding to left and right). The values are updated at each trial based on the feedback received. 
+- `alpha`: the learning rate, which determines the extent to which the expected values are updated at each trial. We define it later when we simulate the data. 
+- `feedback`: received for the choice made in the previous trial, and it is a scalar value indicating the outcome (0 for incorrect, 1 for correct).
+
+The other elements in the function are:
+- `choice_probabilities`: the probability of choosing each option at the current trial, calculated using the softmax function. The variable type is a vector of length 2. 
+- `choice`: the choice made at the current trial, which is sampled from a binomial distribution with size 1 and the probabilities calculated using the softmax function.
+- `updatedValue`: the updated expected values for the two options, based on the choice made and the feedback received. The variable type is a vector of length 2.
+
+```{r Agent Function}
+
+RL_agent_f <- function(value, alpha, theta, feedback) {
+
+  # here we use softmax to decide the probability of choosing each option
+  choice_probabilities <- softmax_f(value, theta)
+  
+  # make a choice based on the calculated probabilities outputted from softmax
+  choice <- sample(c(0, 1), size = 1, prob = choice_probabilities)
+  
+  # update values based on the choice made and feedback received
+  updatedValue <- ValueUpdate_f(value, alpha, choice, feedback)
+  
+  # return the choice and the updated values
+  return(list(choice = choice, updatedValue = updatedValue))
+}
+  
+  
+```
+
+
+## Noisy WSLS Agent 
+```{r Noisy WSLS Agent}
+# WSLS Agent function with noise (tiredness)
+WSLSAgentNoise_f <- function(prevChoice, Feedback, noise){
+  # Win-Stay-Lose-Shift Strategy
+  if (Feedback == 1) {
+    choice <- prevChoice
+  } else if (Feedback == 0) {
+    choice <- 1 - prevChoice
+  }
+  
+  # Applying noise (tiredness)
+  if (rbinom(1, 1, noise) == 1) {
+    choice <- rbinom(1, 1, 0.5)
+  }
+  
+  return(choice)
+}
+```
+
+## Simulating Data: The Two Agents Playing Against Each Other, One game is 120 trials, they play 20 games.
+
+```{r}
+# Parameters for the RL Agent
+alpha <- 0.1  # Learning rate
+theta <- 0.5  # Temperature parameter for softmax
+
+# Parameters for the Noisy WSLS Agent
+noise <- 0.1  # Probability of choosing randomly due to noise
+
+# Number of games and trials
+num_games <- 20
+num_trials <- 120
+
+# Store results
+results <- list()
+
+for (game in 1:num_games) {
+  # Initial values for both agents
+  RL_value <- c(0.5, 0.5)  # Initial expected values for RL Agent
+  WSLS_prevChoice <- sample(c(0, 1), size = 1)  # Initial choice for WSLS Agent
+  WSLS_Feedback <- 0  # Initial feedback (assume loss)
+  
+  game_results <- list()
+  
+  for (trial in 1:num_trials) {
+    # RL Agent makes a choice and updates values
+    RL_outcome <- RL_agent_f(RL_value, alpha, theta, WSLS_Feedback)
+    RL_choice <- RL_outcome$choice
+    RL_value <- RL_outcome$updatedValue
+    
+    # Noisy WSLS Agent makes a choice
+    WSLS_choice <- WSLSAgentNoise_f(WSLS_prevChoice, WSLS_Feedback, noise)
+    
+    # Determine feedback based on choices (simple rule: same choice = win, different choice = lose)
+    if (RL_choice == WSLS_choice) {
+      RL_Feedback <- 1  # Win
+      WSLS_Feedback <- 1
+    } else {
+      RL_Feedback <- 0  # Lose
+      WSLS_Feedback <- 0
+    }
+    
+    # Update WSLS's previous choice
+    WSLS_prevChoice <- WSLS_choice
+    
+    # Record trial results
+    game_results[[trial]] <- list(RL_choice = RL_choice, WSLS_choice = WSLS_choice, RL_Feedback = RL_Feedback, WSLS_Feedback = WSLS_Feedback)
+  }
+  
+  results[[game]] <- game_results
+}
+
+```
+
+
+# Analyze the results
+
+```{r}
+
+library(ggplot2)
+library(dplyr)
+
+```
+
+```{r}
+library(ggplot2)
+
+# Assuming you're interested in visualizing the choices for a specific game, e.g., Game 1
+ggplot(results_df[results_df$Game == 1, ], aes(x = Trial)) +
+  geom_line(aes(y = RL_Choice, color = "RL Agent"), size = 1) +
+  geom_line(aes(y = WSLS_Choice, color = "Noisy WSLS Agent"), size = 1) +
+  labs(title = "Choice Patterns in Game 1: RL Agent vs. Noisy WSLS Agent", y = "Choice", x = "Trial") +
+  scale_color_manual(name = "Agents", values = c("RL Agent" = "blue", "Noisy WSLS Agent" = "red")) +
+  theme_minimal()
+
+```
+
+
+
