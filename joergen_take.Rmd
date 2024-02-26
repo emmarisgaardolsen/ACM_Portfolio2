@@ -102,6 +102,9 @@ print(head(d, 20))
 ```
 
 ###### BELOW: Copy of Ricardo's code: ############
+
+Remember to delete
+
 ```{r}
 # activcation functions:
 softmax <- function(x, tau) {
