@@ -20,8 +20,88 @@ Parameters:
 * V_US: The associative strength of the US, often set at a fixed value since the US inherently elicits a response.
 * N = number of trials to simulate
 * Rate (theta) # the rate of the choice of the action
+**Code:**
+
+Description of the game:
+A person A stands in front of another person B who has his hands hidden behind his back. In one of the hands person B holds an object. The objective for person A is to correctly guess in which hand the object is by saying right or left. This goes on for 100 trials. Person A has a specific learning rate by which he is able to detect patterns in the game.
+```{r}
+library(tidyverse)
+
+# Softmax function to calculate choice probabilities
+softmax <- function(x, tau) { # x is the expected value for each choice, tau is the temperature parameter, the higher the temperature, the more random the choice (more exploration)
+    exp_vals <- exp(x / tau)
+    probabilities <- exp_vals / sum(exp_vals)
+    return(probabilities)
+}
+
+# Function to adjust ValueUpdate to the two choices of left or right hand
+ValueUpdate <- function(value, alpha, choice, feedback) {
+  PE <- feedback - value[choice] # Compute the prediction error for the chosen hand
+  value[choice] <- value[choice] + alpha * PE # Update the value for the chosen hand using PE
+  return(value)
+}
+
+# Number of agents is not used here if we're simulating a single agent
+agents <- 1
+trials <- 100    # Simulation for 100 trials as per task description
 
 
+# Initialize the value estimates for left and right as 0
+value <- c(0, 0) # Left = value[1], Right = value[2]
+alpha <- 0.9     # Learning rate
+temperature <- 0.5 # Temperature parameter for softmax, higher means more randomness
+
+# Initialize data frame to store the results
+d <- tibble(
+  trial = integer(trials),
+  choice = integer(trials), 
+  value_left = numeric(trials), 
+  value_right = numeric(trials), 
+  feedback = integer(trials)
+)
+
+# Simulating Person B's random choice (the person who has his hands behind his back)
+set.seed(123) 
+hidden_object <- sample(c(0, 1), trials, replace = TRUE, prob = c(0.7, 0.2)) # 0.7% probablity for 0 (left), 0.2 for 1 (right)
+
+# Simulation loop
+for (i in 1:trials) {
+  # Left is 0, Right is 1
+  correct_choice <- hidden_object[i]
+  
+  # Calculate choice probabilities using the softmax function
+  probabilities <- softmax(value, temperature) # Calculate the choice probabilities using the softmax function
+  choice <- ifelse(runif(1) < probabilities[1], 0, 1) # Randomly choose based on probabilities (see above line)
+                  # this line chooses 0 if the random number is less than the probability of 0, otherwise it chooses 1
+  
+  # Determine feedback (1 for correct guess, -1 for incorrect)
+  feedback <- ifelse(choice == correct_choice, 1, -1)
+  
+  # Update values based on feedback
+  value <- ValueUpdate(value, alpha, choice + 1, feedback)
+  
+  # Record data
+  d$trial[i] <- i
+  d$choice[i] <- choice
+  d$value_left[i] <- value[1]
+  d$value_right[i] <- value[2]
+  d$feedback[i] <- feedback
+}
+
+# Plot the results
+ggplot(d, aes(x = trial)) + 
+  geom_line(aes(y = value_left, color = "Value for 0")) +
+  geom_line(aes(y = value_right, color = "Value for 1")) +
+  scale_color_manual(values = c("Value for 0" = "blue", "Value for 1" = "red")) +
+  labs(y = "Expected Value", color = "Legend") +
+  theme_bw() +
+  theme(legend.title = element_blank())
+
+# Print the first 20 trials as an example
+print(head(d, 20))
+```
+
+###### BELOW: Copy of Ricardo's code: ############
 ```{r}
 # activcation functions:
 softmax <- function(x, tau) {
@@ -106,215 +186,3 @@ ggplot(subset(d, trial < 21)) +
 ```
 
 
-**I want to simulate the data for this game in R:**
-A person A stands in front of another person B who has his hands hidden behind his back. In one of the hands person B holds an object. The objective for person A is to correctly guess in which hand the object is by saying right or left. This goes on for 100 trials. Person A has a specific learning rate by which he is able to detect patterns in the game.
-
-I want to implement a rescola-wagner model to model this game with simulated data. How would I go about doing this in R?
-
-```{r}
-set.seed(123) # For reproducibility
-
-# Parameters
-alpha <- 0.1    # Person A's learning rate
-trials <- 100   # Number of trials
-V_Left <- 0     # Initial expected value for "left"
-V_Right <- 0    # Initial expected value for "right"
-
-# Vectors to store the changes in expected values
-history_V_Left <- numeric(trials)
-history_V_Right <- numeric(trials)
-history_Choices <- character(trials)
-
-# Function to simulate Person B's action
-get_actual_hand <- function() {
-  sample(c("Left", "Right"), 1)  # Randomly choose "Left" or "Right"
-}
-
-# Simulate the Game
-for (i in 1:trials) {
-  # Person B hides the object
-  actual_hand <- get_actual_hand()
-  
-  # Person A makes a guess
-  # Person A's strategy is to guess the hand which has the highest expected value
-  guess <- ifelse(V_Left >= V_Right, "Left", "Right")
-  history_Choices[i] <- guess  # Record the guess
-  
-  # Determine if the guess was correct
-  outcome <- ifelse(guess == actual_hand, 1, -1)  # Correct guess: +1, incorrect guess: -1
-  
- # Update the expected values based on the outcome
-  if (guess == "Left") {
-    V_Left <- V_Left + alpha * (outcome - V_Left)
-  } else {
-    V_Right <- V_Right + alpha * (outcome - V_Right)
-  }
-  
-  # Record the expected values history
-  history_V_Left[i] <- V_Left
-  history_V_Right[i] <- V_Right
-}
-
-# Plot the evolution of expected values over trials
-plot(history_V_Left, type = 'l', col = 'blue', lwd = 2, ylim = range(c(history_V_Left, history_V_Right)),
-     xlab = 'Trial', ylab = 'Expected Value', main = 'Expected Values Across Trials')
-lines(history_V_Right, type = 'l', col = 'red', lwd = 2)
-legend("bottomright", legend = c("Left Hand", "Right Hand"),
-       col = c("blue", "red"), lty = 1, lwd = 2)
-
-# View choices history
-print(history_Choices)
-```
-
-
-
-
-**Updated code:**
-
-Description:
-
-A person A stands in front of another person B who has his hands hidden behind his back. In one of the hands person B holds an object. The objective for person A is to correctly guess in which hand the object is by saying right or left. This goes on for 100 trials. Person A has a specific learning rate by which he is able to detect patterns in the game.
-```{r}
-library(tidyverse)
-
-# Softmax function to calculate choice probabilities
-softmax <- function(x, tau) { # x is the expected value for each choice, tau is the temperature parameter, the higher the temperature, the more random the choice (more exploration)
-    exp_vals <- exp(x / tau)
-    probabilities <- exp_vals / sum(exp_vals)
-    return(probabilities)
-}
-
-# Function to adjust ValueUpdate to the two choices of left or right hand
-ValueUpdate <- function(value, alpha, choice, feedback) {
-  PE <- feedback - value[choice] # Compute the prediction error for the chosen hand
-  value[choice] <- value[choice] + alpha * PE # Update the value for the chosen hand using PE
-  return(value)
-}
-
-# Number of agents is not used here if we're simulating a single agent
-agents <- 1
-trials <- 100    # Simulation for 100 trials as per task description
-
-
-# Initialize the value estimates for left and right as 0
-value <- c(0, 0) # Left = value[1], Right = value[2]
-alpha <- 0.9     # Learning rate
-temperature <- 0.5 # Temperature parameter for softmax, higher means more randomness
-
-# Initialize data frame to store the results
-d <- tibble(
-  trial = integer(trials),
-  choice = integer(trials), 
-  value_left = numeric(trials), 
-  value_right = numeric(trials), 
-  feedback = integer(trials)
-)
-
-# Simulating Person B's random choice (the person who has his hands behind his back)
-set.seed(123) 
-hidden_object <- sample(c(0, 1), trials, replace = TRUE, prob = c(0.7, 0.2)) # 0.7% probablity for 0 (left), 0.2 for 1 (right)
-
-# Simulation loop
-for (i in 1:trials) {
-  # Left is 0, Right is 1
-  correct_choice <- hidden_object[i]
-  
-  # Calculate choice probabilities using the softmax function
-  probabilities <- softmax(value, temperature) # Calculate the choice probabilities using the softmax function
-  choice <- ifelse(runif(1) < probabilities[1], 0, 1) # Randomly choose based on probabilities (see above line)
-                  # this line chooses 0 if the random number is less than the probability of 0, otherwise it chooses 1
-  
-  # Determine feedback (1 for correct guess, -1 for incorrect)
-  feedback <- ifelse(choice == correct_choice, 1, -1)
-  
-  # Update values based on feedback
-  value <- ValueUpdate(value, alpha, choice + 1, feedback)
-  
-  # Record data
-  d$trial[i] <- i
-  d$choice[i] <- choice
-  d$value_left[i] <- value[1]
-  d$value_right[i] <- value[2]
-  d$feedback[i] <- feedback
-}
-
-# Plot the results
-ggplot(d, aes(x = trial)) + 
-  geom_line(aes(y = value_left, color = "Value for 0")) +
-  geom_line(aes(y = value_right, color = "Value for 1")) +
-  scale_color_manual(values = c("Value for 0" = "blue", "Value for 1" = "red")) +
-  labs(y = "Expected Value", color = "Legend") +
-  theme_bw() +
-  theme(legend.title = element_blank())
-
-# Print the first 20 trials as an example
-print(head(d, 20))
-```
-
-
-
-I want to simulate the data for a person who plays a simple game: Determining whether another person holds an object in his left or right hand.
-The person who hides the object in his hands is slightly biased towards holding it more in his right versus his left hand.
-The person who's guessing adjusts his guesses according to the R-W reinforcement learning rule.
-
-In code, I need to built an agent.
-
-```{r}
-set.seed(123) # Ensures the simulation is reproducible
-
-# Define the parameters
-alpha <- 0.1           # Learning rate for Person A
-trials <- 100          # Number of trials in the game
-p_right <- 0.6         # Probability of Person B having the object in the right hand due to bias
-
-# Initialization
-V_Left <- 0.5          # Initial expected value for guessing left
-V_Right <- 0.5         # Initial expected value for guessing right
-
-# Stores the evolution of expected values
-results <- data.frame(Trial = 1:trials, Guess = rep(NA, trials), Actual = rep(NA, trials), 
-                      V_Left = rep(NA, trials), V_Right = rep(NA, trials),
-                      Feedback = rep(NA, trials))
-
-# Simulation loop
-for (i in 1:trials) {
-  # Person B hides the object based on their bias
-  actual_hand <- ifelse(runif(1) < p_right, "Right", "Left")
-  
-  # Person A makes a guess based on the expected values
-  guess <- ifelse(V_Right > V_Left, "Right", "Left")
-  
-  # Determine feedback: +1 for correct guess, -1 for incorrect guess
-  feedback <- ifelse(guess == actual_hand, 1, -1)
-  
-  # Update values for the chosen hand based on the feedback
-  if (guess == "Left") {
-    V_Left <- V_Left + alpha * (feedback - V_Left)
-  } else {
-    V_Right <- V_Right + alpha * (feedback - V_Right)
-  }
-  
-  # Store results
-  results$Trial[i] <- i
-  results$Guess[i] <- guess
-  results$Actual[i] <- actual_hand
-  results$V_Left[i] <- V_Left
-  results$V_Right[i] <- V_Right
-  results$Feedback[i] <- feedback
-}
-
-# Plot the evolution of expected values over trials
-library(ggplot2)
-ggplot(results, aes(x = Trial)) + 
-  geom_line(aes(y = V_Left, color = "Estimated Value for Left Hand")) +
-  geom_line(aes(y = V_Right, color = "Estimated Value for Right Hand")) +
-  scale_color_manual(values = c("Estimated Value for Left Hand" = "blue",
-                                "Estimated Value for Right Hand" = "red")) +
-  labs(y = "Expected Value", color = "Legend") +
-  theme_minimal() +
-  theme(legend.title = element_blank())
-
-# Optional: Display a summary of the results, such as the final expected values
-#cat("Final Expected Values:\n")
-#cat("Left Hand:", V_Left, "\nRight Hand:", V_Right, "\n")
-```
