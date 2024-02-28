@@ -101,6 +101,9 @@ ggplot(d, aes(x = trial)) +
 print(head(d, 20))
 ```
 
+
+
+
 ###### BELOW: Copy of Ricardo's code: ############
 
 Remember to delete
