@@ -1,0 +1,194 @@
+---
+title: "Portfolio_2_ACM_JW"
+output: html_document
+date: "2024-02-22"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+pacman::p_load(tidyverse)
+```
+
+# Portfolio 2
+
+**Model**: Reinforcement learning Model
+
+Parameters:
+* Learning Rate (alpha) # how much the agent learns from the past: think of it as the learning rate for the CS in the CS-US association.
+* V_CS # The associative strength of the CS, starts at 0 as the CS is initially neutral.
+* V_US: The associative strength of the US, often set at a fixed value since the US inherently elicits a response.
+* N = number of trials to simulate
+* Rate (theta) # the rate of the choice of the action
+**Code:**
+
+Description of the game:
+A person A stands in front of another person B who has his hands hidden behind his back. In one of the hands person B holds an object. The objective for person A is to correctly guess in which hand the object is by saying right or left. This goes on for 100 trials. Person A has a specific learning rate by which he is able to detect patterns in the game.
+```{r}
+library(tidyverse)
+
+# Softmax function to calculate choice probabilities
+softmax <- function(x, tau) { # x is the expected value for each choice, tau is the temperature parameter, the higher the temperature, the more random the choice (more exploration)
+    exp_vals <- exp(x / tau)
+    probabilities <- exp_vals / sum(exp_vals)
+    return(probabilities)
+}
+
+# Function to adjust ValueUpdate to the two choices of left or right hand
+ValueUpdate <- function(value, alpha, choice, feedback) {
+  PE <- feedback - value[choice] # Compute the prediction error for the chosen hand
+  value[choice] <- value[choice] + alpha * PE # Update the value for the chosen hand using PE
+  return(value)
+}
+
+# Number of agents is not used here if we're simulating a single agent
+agents <- 1
+trials <- 100    # Simulation for 100 trials as per task description
+
+
+# Initialize the value estimates for left and right as 0
+value <- c(0, 0) # Left = value[1], Right = value[2]
+alpha <- 0.9     # Learning rate
+temperature <- 0.5 # Temperature parameter for softmax, higher means more randomness
+
+# Initialize data frame to store the results
+d <- tibble(
+  trial = integer(trials),
+  choice = integer(trials), 
+  value_left = numeric(trials), 
+  value_right = numeric(trials), 
+  feedback = integer(trials)
+)
+
+# Simulating Person B's random choice (the person who has his hands behind his back)
+set.seed(123) 
+hidden_object <- sample(c(0, 1), trials, replace = TRUE, prob = c(0.7, 0.2)) # 0.7% probablity for 0 (left), 0.2 for 1 (right)
+
+# Simulation loop
+for (i in 1:trials) {
+  # Left is 0, Right is 1
+  correct_choice <- hidden_object[i]
+  
+  # Calculate choice probabilities using the softmax function
+  probabilities <- softmax(value, temperature) # Calculate the choice probabilities using the softmax function
+  choice <- ifelse(runif(1) < probabilities[1], 0, 1) # Randomly choose based on probabilities (see above line)
+                  # this line chooses 0 if the random number is less than the probability of 0, otherwise it chooses 1
+  
+  # Determine feedback (1 for correct guess, -1 for incorrect)
+  feedback <- ifelse(choice == correct_choice, 1, -1)
+  
+  # Update values based on feedback
+  value <- ValueUpdate(value, alpha, choice + 1, feedback)
+  
+  # Record data
+  d$trial[i] <- i
+  d$choice[i] <- choice
+  d$value_left[i] <- value[1]
+  d$value_right[i] <- value[2]
+  d$feedback[i] <- feedback
+}
+
+# Plot the results
+ggplot(d, aes(x = trial)) + 
+  geom_line(aes(y = value_left, color = "Value for 0")) +
+  geom_line(aes(y = value_right, color = "Value for 1")) +
+  scale_color_manual(values = c("Value for 0" = "blue", "Value for 1" = "red")) +
+  labs(y = "Expected Value", color = "Legend") +
+  theme_bw() +
+  theme(legend.title = element_blank())
+
+# Print the first 20 trials as an example
+print(head(d, 20))
+```
+
+
+
+
+###### BELOW: Copy of Ricardo's code: ############
+
+Remember to delete
+
+```{r}
+# activcation functions:
+softmax <- function(x, tau) {
+  outcome = 1 / (1 + exp(-tau * x))
+  return(outcome)
+}
+
+relu <- function(x) {
+    outcome = pmax(0, x)
+    return(outcome)
+}
+
+# update function
+"""
+This function is designed to update the values of a two-element vector based on a learning rate (alpha), a binary decision (choice), and some feedback
+"""
+
+ValueUpdate = function(value, alpha, choice, feedback) {
+  
+  PE <- feedback - value # the prediction error. The feedback is the new information received, and the value is the current estimate of some value.
+  
+  v1 <- value[1] + alpha * (1 - choice) * (feedback - value[1]) # value 1 = current estimate of some value, feedback = new information received, alpha = learning rate, choice is the action taken
+
+  v2 <- value[2] + alpha * (choice) * (feedback - value[2]) 
+  
+  updatedValue <- c(v1, v2)
+  
+  return(updatedValue)
+}
+```
+
+## Defining parameters
+
+```{r }
+agents <- 100
+trials <- 120
+```
+
+## Simulating with alpha 0.9 and p 0.9
+
+```{r }
+value <- c(0,0)
+alpha <- 0.9
+temperature <- 1
+choice <- 0
+feedback <- -1
+p <- 0.9 # probability that choice 0 gives a prize (1-p is probability that choice 1 gives a prize)
+
+ValueUpdate(value, alpha, choice, feedback)
+
+d <- tibble(trial = rep(NA, trials),
+            choice = rep(NA, trials), 
+            value1 = rep(NA, trials), 
+            value2 = rep(NA, trials), 
+            feedback = rep(NA, trials))
+
+Bot <- rbinom(trials, 1, p)
+
+for (i in 1:trials) {
+    
+    choice <- 1 #rbinom(1, 1, softmax(value[2] - value[1], temperature))
+    feedback <- ifelse(Bot[i] == choice, 1, -1)
+    value <- ValueUpdate(value, alpha, choice, feedback)
+    d$choice[i] <- choice
+    d$value1[i] <- value[1]
+    d$value2[i] <- value[2]
+    d$feedback[i] <- feedback
+  
+}
+
+d <- d %>% mutate(
+  trial = seq(trials),
+  prevFeedback = lead(feedback))
+
+print(d)
+
+ggplot(subset(d, trial < 21)) + 
+  geom_line(aes(trial, value1), color = "green") + 
+  geom_line(aes(trial, value2), color = "blue") +
+  geom_line(aes(trial, prevFeedback), color = "red") +
+  theme_bw()
+```
+
+

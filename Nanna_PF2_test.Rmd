@@ -1,0 +1,278 @@
+---
+title: "Nanna_PF2"
+author: "Nanna Steenholdt"
+output: word_document
+date: '2024-02-25'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r Calling Libraries, include=FALSE}
+# Calling libraries for later visualtions in the analysis
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+```
+
+
+### Making a Reinforcement Learning Agent
+
+## To make a RL-agent, we define three functions 
+
+
+# Softmax Function
+Firstly, we define a softmax function. This function computes the probabilities associated with selecting either the left or right option, determined by the present expected values corresponding to each choice. It employs the softmax function, a widely used method for translating values into probabilities within reinforcement learning frameworks. It converts the expected values into probabilities that sum up to 1. The temperature parameter (theta) determines the level of exploration vs. exploitation.
+```{r Softmax}
+#Defining the Softmax function
+softmax_function <- function(expected_values, theta) {
+  probabilities <- exp(expected_values * theta) / sum(exp(expected_values * theta))
+  return(probabilities) 
+}
+```
+
+# Rescorla-Wagner Learning Rule
+This function utilizes the Rescorla-Wagner learning rule to adjust the expected values associated with choosing either left or right, taking into account the feedback received (win or loss) and a specified learning rate parameter (Which here is 'Alpha')
+
+The RWLR_function takes four parameters:
+value: A vector representing the agent's expected values for choosing each option (0 or 1).
+alpha: The learning rate parameter, determining the extent of value updates based on feedback.
+choice: The choice made by the agent (0 for left, 1 for right).
+feedback: The feedback received from the environment (1 for correct, 0 for incorrect).
+
+Inside the function:
+The prediction error (PE) is calculated as the difference between the received feedback and the expected value of the chosen option.
+The function updates the expected values for both options (v1 and v2) based on the prediction error, the learning rate, and the choice made by the agent.
+The updated expected values are combined into a vector (updatedValues).
+
+Finally, the function returns the updated expected values, which will be used by the agent in subsequent trials to make better decisions based on past experiences.
+
+```{r RWLR}
+RWLR_function <- function(value, alpha, choice, feedback) {
+  # Calculate the prediction error (PE) as the the difference between the feedback and current expected value
+  PE <- feedback - value
+  
+  # Update the expected values based on the prediction error and the learning rate
+  v1 <- value[1] + alpha * (1 - choice) * (feedback - value[1])
+  v2 <- value[2] + alpha * choice * (feedback - value[2])
+  
+  # Combine the updated values into a vector
+  updatedValues <- c(v1, v2)
+  
+  # Return the updated expected values
+  return(updatedValues)
+}
+
+```
+
+
+# Main Agent Function
+This function represents the main reinforcement learning agent that simulates the agent's choices and updates its expected values based on the Rescorla-Wagner learning rule. It utilizes the softmax function to determine the probabilities of choosing each option and then selects an action based on these probabilities.
+
+The mainAgent_function takes four parameters:
+value: A vector representing the agent's expected values for choosing each option (0 or 1).
+alpha: The learning rate parameter, determining the extent of value updates based on feedback.
+theta: The temperature parameter for the softmax function, influencing the agent's exploration-exploitation trade-off.
+feedback: The feedback received from the environment (1 for correct, 0 for incorrect).
+
+Inside the function:
+softmax_function: The softmax_function calculates the probabilities of choosing each option based on the current expected values (value) and the temperature parameter (theta).
+The agent samples an action (0 or 1) based on the calculated choice probabilities, reflecting its probabilistic decision-making process.
+The function then calls RWLR_function to update the expected values based on the chosen action (choice) and the received feedback, using the learning rate (alpha).
+
+Finally, the function returns a list containing the agent's choice (choice) and the updated expected values (updatedValues) for the current trial.
+```{r Main Agent function}
+mainAgent_function <- function(value, alpha, theta, feedback) {
+  # Calculate the probabilities of choosing each option based on the current expected values
+  choice_probabilities <- softmax_function(value, theta)
+  
+  # Sample an action (0 or 1) based on the calculated choice probabilities
+  choice <- sample(c(0, 1), size = 1, prob = choice_probabilities)
+  
+  # Update the expected values based on the chosen action and received feedback
+  updatedValues <- RWLR_function(value, alpha, choice, feedback)
+  
+  # Return the agent's choice and the updated expected values
+  return(list(choice = choice, updatedValues = updatedValues))
+}
+
+```
+
+# The WSLS Agent with noise
+The NoisyWSLSAgent_function takes three parameters:
+prevChoice: The agent's previous choice (0 or 1).
+Feedback: The feedback received from the previous trial (1 for win, 0 for loss).
+noise: The level of noise introduced into the decision-making process (a probability between 0 and 1).
+
+Based on the received feedback, the agent decides whether to stick with its previous choice or switch.
+
+Additionally, the function introduces noise into the decision-making process:
+With probability noise, the agent makes a random choice instead of following the WSLS strategy.
+
+The function returns the agent's final choice for the current trial after considering both the WSLS strategy and the introduced noise.
+
+```{r Noisy WSLS Agent}
+NoisyWSLSAgent_function <- function(prevChoice, Feedback, noise){
+  # Check the feedback received from the previous trial
+  if (Feedback == 1) {
+    # If the feedback is a win, the agent sticks with its previous choice
+    choice <- prevChoice
+  } else if (Feedback == 0) {
+    # If the feedback is a loss, the agent switches its choice
+    choice <- 1 - prevChoice
+  }
+  
+  # Introduce noise into the decision-making process
+  if (rbinom(1, 1, noise) == 1) {
+    # With probability 'noise', the agent makes a random choice
+    choice <- rbinom(1, 1, 0.5)  # Randomly choose between 0 and 1 with equal probability
+  }
+  
+  return(choice)  # Return the agent's final choice for the current trial
+}
+
+
+```
+
+
+## Simulating Data
+
+The simulate_game function is defined to simulate interactions between the RL Agent and the WSLS Agent over multiple games and trials.
+
+Within each game:
+The expected values for the RL Agent (RL_value) are initialized to [0.5, 0.5], representing equal initial expectations for choosing left and right.
+The previous choice for the WSLS Agent (WSLS_prevChoice) is randomly initialized to either 0 or 1.
+The feedback for the WSLS Agent (WSLS_Feedback) is initially set to 0.
+Results for each trial within the game are stored in the game_results list.
+
+The RL Agent and the WSLS Agent make choices based on their respective strategies, update their internal states, and provide feedback to each other.
+
+The results of each trial, including choices made by both agents and feedback received, are recorded in game_results.
+
+At the end of each game, game_results is appended to the results list.
+
+Finally, the function returns the results list containing the outcomes of all simulated games.
+
+```{r Simulation}
+simulate_game <- function(num_games, num_trials, alpha, theta, noise) {
+  # Initialize an empty list to store the results of each game
+  results <- list()
+  
+  # Loop through each game
+  for (game in 1:num_games) {
+    # Initialize the expected values for the RL Agent and the previous choice for the WSLS Agent
+    RL_value <- c(0.5, 0.5)
+    WSLS_prevChoice <- sample(c(0, 1), size = 1)
+    
+    # Initialize the feedback for the WSLS Agent
+    WSLS_Feedback <- 0
+    
+    # Initialize an empty list to store the results of each trial within the game
+    game_results <- list()
+    
+    # Loop through each trial within the game
+    for (trial in 1:num_trials) {
+      # RL Agent makes a choice and updates its expected values
+      RL_outcome <- mainAgent_function(RL_value, alpha, theta, WSLS_Feedback)
+      RL_choice <- RL_outcome$choice
+      RL_value <- RL_outcome$updatedValues
+      
+      # WSLS Agent makes a choice
+      WSLS_choice <- NoisyWSLSAgent_function(WSLS_prevChoice, WSLS_Feedback, noise)
+      
+      # Determine feedback based on the choices made
+      if (RL_choice == WSLS_choice) {
+        RL_Feedback <- 1  # Correct choice
+        WSLS_Feedback <- 1
+      } else {
+        RL_Feedback <- 0  # Incorrect choice
+        WSLS_Feedback <- 0
+      }
+      
+      # Update the previous choice of the WSLS Agent
+      WSLS_prevChoice <- WSLS_choice
+      
+      # Record the results of the trial
+      game_results[[trial]] <- list(RL_choice = RL_choice, WSLS_choice = WSLS_choice, RL_Feedback = RL_Feedback, WSLS_Feedback = WSLS_Feedback)
+    }
+    
+    # Store the results of the game in the overall results list
+    results[[game]] <- game_results
+  }
+  
+  # Return the results of all games
+  return(results)
+}
+
+# Parameters for the simulation
+num_games <- 20
+num_trials <- 120
+alpha <- 0.1
+theta <- 0.5
+noise <- 0.1
+
+# Run the simulation
+results <- simulate_game(num_games, num_trials, alpha, theta, noise)
+
+
+```
+
+
+## Visualisation
+
+```{r Visualisation}
+
+# Create a dataframe from the results list
+results_df <- purrr::map_dfr(results, ~bind_rows(.x))
+results_df$Game <- rep(1:num_games, each = num_trials)
+
+# Visualize the results
+ggplot(results_df[results_df$Game == 1, ], aes(x = 1:num_trials)) +
+  geom_line(aes(y = RL_choice, color = "RL Agent"), size = 1) +
+  geom_line(aes(y = WSLS_choice, color = "Noisy WSLS Agent"), size = 1) +
+  labs(title = "Choice Patterns in Game 1: RL Agent vs. Noisy WSLS Agent", y = "Choice", x = "Trial") +
+  scale_color_manual(name = "Agents", values = c("RL Agent" = "blue", "Noisy WSLS Agent" = "red")) +
+  theme_minimal()
+
+```
+
+```{r}
+# Calculate win rate over time for each agent
+win_rate_df <- results_df %>%
+  group_by(Game) %>%
+  summarize(
+    RL_Win_Rate = mean(RL_Feedback),
+    WSLS_Win_Rate = mean(WSLS_Feedback)
+  )
+
+# Plot win rate over time
+ggplot(win_rate_df, aes(x = Game, y = RL_Win_Rate)) +
+  geom_line(color = "blue") +
+  geom_line(aes(y = WSLS_Win_Rate), color = "red") +
+  labs(title = "Win Rate Over Time", x = "Game", y = "Win Rate") +
+  scale_color_manual(name = "Agents", values = c("RL Agent" = "blue", "WSLS Agent" = "red")) +
+  theme_minimal()
+
+```
+```
+```{r Learning Curve}
+# Calculate cumulative win rate over games
+cumulative_win_rate <- results_df %>%
+  group_by(Game) %>%
+  summarize(
+    RL_Cumulative_Win_Rate = mean(cumsum(RL_Feedback) / 1:num_trials),
+    WSLS_Cumulative_Win_Rate = mean(cumsum(WSLS_Feedback) / 1:num_trials)
+  )
+
+# Plot learning curve
+ggplot(cumulative_win_rate, aes(x = Game)) +
+  geom_line(aes(y = RL_Cumulative_Win_Rate), color = "blue") +
+  geom_line(aes(y = WSLS_Cumulative_Win_Rate), color = "red") +
+  labs(title = "Learning Curve", x = "Game", y = "Cumulative Win Rate") +
+  scale_color_manual(name = "Agents", values = c("RL Agent" = "blue", "WSLS Agent" = "red")) +
+  theme_minimal()
+
+```
+
+
