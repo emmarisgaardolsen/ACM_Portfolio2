@@ -166,9 +166,26 @@ for (game in 1:num_games) {
 # Analyze the results
 
 ```{r}
-
 library(ggplot2)
 library(dplyr)
+```
+
+```{r}
+# extract data for plotting
+results_df <- data.frame(
+  Game = rep(1:num_games, each = num_trials),  
+  Trial = rep(1:num_trials, times = num_games),  
+  RL_Choice = numeric(num_games * num_trials),
+  WSLS_Choice = numeric(num_games * num_trials)
+)
+
+```
+
+```{r}
+for (trial in 1:num_trials) {
+  results_df$RL_Choice[trial] <- results[[1]][[trial]]$RL_choice
+  results_df$WSLS_Choice[trial] <- results[[1]][[trial]]$WSLS_choice
+}
 
 ```
 
@@ -176,13 +193,57 @@ library(dplyr)
 library(ggplot2)
 
 ggplot(results_df[results_df$Game == 1, ], aes(x = Trial)) +
-  geom_line(aes(y = RL_Choice, color = "RL Agent"), size = 1) +
-  geom_line(aes(y = WSLS_Choice, color = "Noisy WSLS Agent"), size = 1) +
+  geom_line(aes(y = RL_Choice, color = "RL Agent"), size = 0.3) +
+  geom_line(aes(y = WSLS_Choice, color = "Noisy WSLS Agent"), size = 0.3) +
   labs(title = "Choice Patterns in Game 1: RL Agent vs. Noisy WSLS Agent", y = "Choice", x = "Trial") +
   scale_color_manual(name = "Agents", values = c("RL Agent" = "blue", "Noisy WSLS Agent" = "red")) +
   theme_minimal()
 
 ```
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Initialize an empty list to store cumulative feedback for each game
+cumulative_feedback <- list()
+
+# Iterate over each game to calculate cumulative feedback
+for (game in 1:num_games) {
+  cumulative <- 0
+  feedback <- numeric(num_trials)
+  
+  # Iterate over each trial in the game
+  for (trial in 1:num_trials) {
+    # Add feedback of the current trial to cumulative feedback
+    cumulative <- cumulative + results[[game]][[trial]]$RL_Feedback
+    feedback[trial] <- cumulative
+  }
+  
+  cumulative_feedback[[game]] <- feedback
+}
+
+# Create a data frame to store the cumulative feedback for each game
+feedback_df <- data.frame(
+  Game = rep(1:num_games, each = num_trials),
+  Trial = rep(1:num_trials, times = num_games),
+  Cumulative_Feedback = unlist(cumulative_feedback)
+)
+
+# Plot cumulative feedback for RL agent across all games
+ggplot(feedback_df, aes(x = Trial, y = Cumulative_Feedback, color = as.factor(Game))) +
+  geom_line() +
+  labs(title = "Cumulative Feedback for RL Agent Across Games",
+       x = "Trial Number",
+       y = "Cumulative Feedback") +
+  theme_minimal() +
+  scale_color_discrete(name = "Game")  # Set color scale for different games
+
+
+```
+
+
+
+
 
 
 
