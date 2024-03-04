@@ -105,65 +105,90 @@ WSLSAgentNoise_f <- function(prevChoice, Feedback, noise){
   
   return(choice)
 }
+
 ```
 
 ## Simulating Data: The Two Agents Playing Against Each Other, One game is 120 trials, they play 20 games.
 
+
 ```{r}
-# parameters for the RL Agent
-alpha <- 0.1  # learning rate
-theta <- 0.5  # temperature parameter for softmax
 
-# parameters for the noisy WSLS Agent
-noise <- 0.1  # probability of choosing randomly due to noise
+set.seed(1984)
 
-# number of games and trials
-num_games <- 20
+alpha <- 0.1 # RL
+theta <- 0.5 # RL
+noise <- 0.1 # WSLS
+
+num_games <- 20 
 num_trials <- 120
 
-# store results
-results <- list()
+df <- data.frame()
 
+# Simulate interactions for multiple games
 for (game in 1:num_games) {
-  # initial values for both agents
-  RL_value <- c(0.5, 0.5)  # initial expected values for RL Agent
-  WSLS_prevChoice <- sample(c(0, 1), size = 1)  # initial choice for WSLS Agent
-  WSLS_Feedback <- 0  # initial feedback (assume loss)
-  
-  game_results <- list()
-  
-  for (trial in 1:num_trials) {
-    # RL agent makes a choice and updates values
-    RL_outcome <- RL_agent_f(RL_value, alpha, theta, WSLS_Feedback)
-    RL_choice <- RL_outcome$choice
-    RL_value <- RL_outcome$updatedValue
-    
-    # noisy WSLS Agent makes a choice
-    WSLS_choice <- WSLSAgentNoise_f(WSLS_prevChoice, WSLS_Feedback, noise)
-    
-    # determine feedback based on choices (simple rule: same choice = win, different choice = lose)
-    if (RL_choice == WSLS_choice) {
-      RL_Feedback <- 1  # Win
-      WSLS_Feedback <- 1
+  # empty vectors to store choices 
+  RL_choices <- rep(NA, num_trials) 
+  WSLS_choices <- rep(NA, num_trials)
+  RL_feedback <- rep(NA, num_trials)
+  WSLS_feedback <- rep(NA, num_trials)
+  RL_value <- c(0.5, 0.5)
+
+  # simulate interactions 
+  for (i in 1:num_trials) {
+    if (i == 1) {
+      # initialize first choices randomly for both agents 
+      RL_choices[i] <- sample(c(0,1), 1)
+      WSLS_choices[i] <- sample(c(0,1), 1)    
+
+      if (RL_choices[i] == WSLS_choices[i]) {
+        RL_feedback[i] <- 1  # Win
+        WSLS_feedback[i] <- 0
+      } else {
+        RL_feedback[i] <- 0  # Lose
+        WSLS_feedback[i] <- 1
+      }
+
     } else {
-      RL_Feedback <- 0  # Lose
-      WSLS_Feedback <- 0
+
+      # RL agent makes a choice and updates values
+      RL_outcome <- RL_agent_f(RL_value, alpha, theta, WSLS_feedback[i-1])
+      RL_choice <- RL_outcome$choice
+      RL_value <- RL_outcome$updatedValue
+      WSLS_prevChoice <- WSLS_choices[i-1]
+
+      # noisy WSLS Agent makes a choice
+      WSLS_choice <- WSLSAgentNoise_f(WSLS_prevChoice, WSLS_feedback[i-1], noise)
+
+      # determine feedback based on choices (simple rule: same choice = win, different choice = lose)
+      if (RL_choice == WSLS_choice) {
+        RL_feedback[i] <- 1  # Win
+        WSLS_feedback[i] <- 0
+      } else {
+        RL_feedback[i] <- 0  # Lose
+        WSLS_feedback[i] <- 1
+      }
+
+      # record trial results
+      RL_choices[i] <- RL_choice
+      WSLS_choices[i] <- WSLS_choice
     }
-    
-    # update WSLS's previous choice
-    WSLS_prevChoice <- WSLS_choice
-    
-    # record trial results
-    game_results[[trial]] <- list(RL_choice = RL_choice, WSLS_choice = WSLS_choice, RL_Feedback = RL_Feedback, WSLS_Feedback = WSLS_Feedback)
   }
-  
-  results[[game]] <- game_results
+
+  # Append results to dataframe
+  game_data <- data.frame(
+    game = rep(game, num_trials),
+    trial = seq(num_trials),
+    RL_choices = RL_choices,
+    WSLS_choices = WSLS_choices,
+    RL_feedback = RL_feedback
+  )
+  df <- rbind(df, game_data)
 }
 
 ```
 
 
-# Analyze the results
+# Analyze the results (to be updated!!! 
 
 ```{r}
 library(ggplot2)
@@ -171,14 +196,7 @@ library(dplyr)
 ```
 
 ```{r}
-# extract data for plotting
-results_df <- data.frame(
-  Game = rep(1:num_games, each = num_trials),  
-  Trial = rep(1:num_trials, times = num_games),  
-  RL_Choice = numeric(num_games * num_trials),
-  WSLS_Choice = numeric(num_games * num_trials)
-)
-
+results_df <- df
 ```
 
 ```{r}
@@ -238,9 +256,48 @@ ggplot(feedback_df, aes(x = Trial, y = Cumulative_Feedback, color = as.factor(Ga
   theme_minimal() +
   scale_color_discrete(name = "Game")  # Set color scale for different games
 
-
 ```
 
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Initialize an empty list to store cumulative feedback for each game
+cumulative_feedback <- list()
+
+# Iterate over each game to calculate cumulative feedback
+for (game in 1:num_games) {
+  cumulative <- 0
+  feedback <- numeric(num_trials)
+  
+  # Iterate over each trial in the game
+  for (trial in 1:num_trials) {
+    # Add feedback of the current trial to cumulative feedback
+    cumulative <- cumulative + results[[game]][[trial]]$RL_Feedback
+    feedback[trial] <- cumulative
+  }
+  
+  cumulative_feedback[[game]] <- feedback
+}
+
+# Create a data frame to store the cumulative feedback for each game
+feedback_df <- data.frame(
+  Game = rep(1:num_games, each = num_trials),
+  Trial = rep(1:num_trials, times = num_games),
+  Cumulative_Feedback = unlist(cumulative_feedback)
+)
+
+# Plot cumulative feedback for RL agent across all games
+ggplot(feedback_df, aes(x = Trial, y = Cumulative_Feedback, color = as.factor(Game))) +
+  geom_line() +
+  labs(title = "Cumulative Feedback for RL Agent Across Games",
+       x = "Trial Number",
+       y = "Cumulative Feedback") +
+  theme_minimal() +
+  scale_color_discrete(name = "Game")  # Set color scale for different games
+
+```
 
 
 
