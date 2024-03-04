@@ -160,6 +160,14 @@ for (game in 1:num_games) {
   results[[game]] <- game_results
 }
 
+# show results dataframe in a seperate window
+results_df <- data.frame(Game = integer(), Trial = integer(), RL_Choice = integer(), WSLS_Choice = integer(), RL_Feedback = integer(), WSLS_Feedback = integer())
+
+
+```
+
+```{r}
+print(results)
 ```
 
 
