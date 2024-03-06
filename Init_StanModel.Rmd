@@ -1,0 +1,50 @@
+---
+title: "Compile_Model"
+author: "NMS"
+date: '2024-03-06'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(cmdstanr)
+
+
+
+# Load the newly installed version of 'rlang'
+library(rlang)
+```
+
+
+```{r}
+## Specify where the model is
+file <- file.path("model_RL.stan")
+
+# Compile the model
+mod <- cmdstan_model(file, 
+                     # this specifies we can parallelize the gradient estimations on multiple cores
+                     cpp_options = list(stan_threads = TRUE), 
+                     # this is a trick to make it faster
+                     stanc_options = list("O1")) 
+
+# The following command calls Stan with specific options.
+samples <- mod$sample(
+  data = game_results, # the data :-)
+  seed = 123,  # a seed, so I always get the same results
+  chains = 2,  # how many chains should I fit (to check whether they give the same results)
+  parallel_chains = 2, # how many of the chains can be run in parallel?
+  threads_per_chain = 2, # distribute gradient estimations within chain across multiple cores
+  iter_warmup = 1000,  # warmup iterations through which hyperparameters (steps and step length) are adjusted
+  iter_sampling = 2000, # total number of iterations
+  refresh = 0,  # how often to show that iterations have been run
+  output_dir = "Groupwork", # saves the samples as csv so it can be later loaded
+  max_treedepth = 20, # how many steps in the future to check to avoid u-turns
+  adapt_delta = 0.99, # how high a learning rate to adjust hyperparameters during warmup
+)
+
+# Same the fitted model
+samples$save_object("RL_model.rds")
+```
+Where  I left off, was this error for running line 32-44
+Error: Missing input data for the following data variables: Trial, RL_Choice, Game.
