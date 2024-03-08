@@ -15,8 +15,6 @@ library(cmdstanr)
 ```
 
 ```{r}
-
-
 ## Create the data. N.B. note the two variables have different lengths: 1 for n, n for h.
 data_try <- list(
   trials = results_df$Trial,  # n of trials
@@ -27,15 +25,24 @@ data_try <- list(
 
 
 ```{r}
-## Specify where the model is
-file <- file.path("model_RL.stan")
+pacman::p_load(rstan)
 
+## Specify where the model is
+model <- stan_model("assignment_2/ACM_Portfolio2/model_RL.stan")
+
+
+```
+
+```{r}
 # Compile the model
-mod <- cmdstan_model(file, 
+mod <- cmdstanr::cmdstan_model(file, 
                      # this specifies we can parallelize the gradient estimations on multiple cores
                      cpp_options = list(stan_threads = TRUE), 
                      # this is a trick to make it faster
                      stanc_options = list("O1")) 
+```
+
+```{r}
 
 # The following command calls Stan with specific options.
 samples <- mod$sample(
