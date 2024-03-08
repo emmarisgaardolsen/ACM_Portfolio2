@@ -10,10 +10,8 @@ knitr::opts_chunk$set(echo = TRUE)
 
 library(cmdstanr)
 
-
-
 # Load the newly installed version of 'rlang'
-library(rlang)
+#library(rlang)
 ```
 
 ```{r}
