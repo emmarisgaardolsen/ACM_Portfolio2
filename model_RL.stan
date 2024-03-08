@@ -1,6 +1,6 @@
 data {
     int<lower=1> trials; // number of trials
-    array[trials] int<lower=0,upper=1> choice; // 0 or 1
+    array[trials] int<lower=1,upper=2> choice; // 0 or 1
     array[trials] int<lower=0,upper=1> feedback; // feedback i
 } 
 
