@@ -14,21 +14,26 @@ library(cmdstanr)
 #library(rlang)
 ```
 
+### Before running this, do run emma_attempt.Rmd first
+
 ```{r}
 
 
-## Create the data. N.B. note the two variables have different lengths: 1 for n, n for h.
+## Even though we attempted to make some lists for Stan to use in the Rmd, they're quite complex, and in the end it may be easier to make a simple list in which the parameter names match those in the Stan model file. 
 data_try <- list(
-  trials = results_df$Trial,  # n of trials
-  choice = results_df$RL_Choice,
-  feedback = feedback_df$Cumulative_Feedback
+  trials = nrow(results_df),  # n of trials
+  choice = results_df$RL_Choice+1, #The +1 is to solve the issue that arises since we use categorical, and it therefor will be in a space of 1 to 2
+  feedback = RL_feedback #See emma_attempt.Rmd for code chunk that gives this
 )
+
+#We were here checking if all of the above had the same length
+#length(results_df$Trial)
 ```
 
 
 ```{r}
 ## Specify where the model is
-file <- file.path("model_RL.stan")
+file <- file.path("model_RL.stan") #change to path that fits you or set appropriate wd
 
 # Compile the model
 mod <- cmdstan_model(file, 
@@ -37,11 +42,14 @@ mod <- cmdstan_model(file,
                      # this is a trick to make it faster
                      stanc_options = list("O1")) 
 
+```
+
+```{r}
 # The following command calls Stan with specific options.
 samples <- mod$sample(
   data = data_try, # the data :-)
   seed = 123,  # a seed, so I always get the same results
-  chains = 2,  # how many chains should I fit (to check whether they give the same results)
+  chains = 4,  # how many chains we should fit (to check whether they give the same results)
   parallel_chains = 2, # how many of the chains can be run in parallel?
   threads_per_chain = 2, # distribute gradient estimations within chain across multiple cores
   iter_warmup = 1000,  # warmup iterations through which hyperparameters (steps and step length) are adjusted
@@ -52,8 +60,113 @@ samples <- mod$sample(
   adapt_delta = 0.99, # how high a learning rate to adjust hyperparameters during warmup
 )
 
-# Same the fitted model
-samples$save_object("RL_model.rds")
+
 ```
-Thoughts: The model cant retrieve the fit, because the chains don't finish.
-Stan wants a list. The list's parameters need to match the names in the .stan file 
+
+
+Jørgen showed this cool package - open in browser for cool discovery of the model and parameters.
+```{r}
+pacman::p_load(shinystan)
+launch_shinystan(samples)
+```
+
+
+```{r}
+# Save the fitted model
+samples$save_object("RL_model.rds")
+
+#Taking a look to see if the model looks alrigt
+samples$summary()
+```
+Looking at chains for each parameter (alpha and temperature)
+
+```{r}
+library(posterior)
+
+# Extract posterior samples and include sampling of the prior:
+draws_df <- as_draws_df(samples$draws())
+
+# Checking the model's chains
+ggplot(draws_df, aes(.iteration, alpha, group = .chain, color = .chain)) +
+  geom_line() +
+  theme_classic()
+
+# Checking the model's chains
+ggplot(draws_df, aes(.iteration, temperature, group = .chain, color = .chain)) +
+  geom_line() +
+  theme_classic()
+
+
+
+###Thoughts:Theyre both super biased towards 0, alpha explores the space decently, but doesn't look amazing. Temperature looks worse.
+```
+```{r}
+# add a prior for alpha 
+draws_df <- draws_df %>% mutate(
+  alpha_prior = rbeta(nrow(draws_df), 1, 1)
+)
+
+# Now let's plot the density for alpha (prior and posterior)
+ggplot(draws_df) +
+  geom_density(aes(alpha), fill = "blue", alpha = 0.3) +
+  geom_density(aes(alpha_prior), fill = "red", alpha = 0.3) +
+  geom_vline(xintercept = 0.8, linetype = "dashed", color = "black", size = 1.5) +
+  xlab("Rate") + #OBS not sure this should be called rate
+  ylab("Posterior Density") +
+  theme_classic()
+```
+```{r}
+#Running diagnostics for summarization
+samples$cmdstan_diagnose()
+
+
+##Looks ok?
+```
+
+
+### PARAMETER RECOVERY
+```{r}
+
+sim_and_fit <- function(seed, trials)
+  
+  for t in seq(trials)) {
+    randomchoice[t] <- RL_agent_f(value, alpha, theta, feedback)
+  }
+  temp <- tibble(trial = seq(trials), choice = randomchoice)
+  
+  data_try <- list(
+    trials = nrow(results_df),  # n of trials
+    choice = results_df$RL_Choice+1, #The +1 is to solve the issue that arises since we use categorical, and it therefor will be in a space of 1 to 2
+    feedback = RL_feedback #See emma_attempt.Rmd for code chunk that gives this
+  )
+  
+  samples <- mod$sample(
+    data = data_try, # the data :-)
+    seed = 123,  # a seed, so I always get the same results
+    chains = 4,  # how many chains we should fit (to check whether they give the same results)
+    parallel_chains = 2, # how many of the chains can be run in parallel?
+    threads_per_chain = 2, # distribute gradient estimations within chain across multiple cores
+    iter_warmup = 1000,  # warmup iterations through which hyperparameters (steps and step length) are adjusted
+    iter_sampling = 2000, # total number of iterations
+    refresh = 0,  # how often to show that iterations have been run
+    #output_dir = "ACM_Portfolio2", # saves the samples as csv so it can be later loaded
+    max_treedepth = 20, # how many steps in the future to check to avoid u-turns
+    adapt_delta = 0.99, # how high a learning rate to adjust hyperparameters during warmup
+  )
+  
+  draws_df <- as_draws_df(samples$draws())
+  
+  #The below is directly from slides W4 p. 64. 
+  #temp <- tibble(biasEst =draws_df$theta_posterior, biasTrue = rateLvl, noise
+                 )
+
+  #return(temp)
+
+
+  
+```
+
+
+
+Thoughts: Jeg tog udgangspunkt dels i hans Riccardos handbook (https://fusaroli.github.io/AdvancedCognitiveModeling2023/practical-exercise-3---getting-into-stan.html#building-our-basic-model-in-stan)
+og del i hans W4 slides. I handbook 4.3.1 bliver dataen lavet om til en liste, hvilket vi også gør i den her Rmd (linje 23), men fordi vi ofc ikke bruger en random noise agent, så har vi ikke den her linje fra hans handbook "d1 <- d %>% subset(noise == 0 & rate == 0.8)", og lige nu er min hjerne done, så jeg kan ikke lige translate det til hvad vi har brug for.
