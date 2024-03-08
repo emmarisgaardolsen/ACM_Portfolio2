@@ -159,8 +159,8 @@ for (game in 1:num_games) {
   
   results[[game]] <- game_results
 }
-
 ```
+
 
 ```{r, new - lists instead of df}
 # Simulating Data: 
@@ -238,11 +238,67 @@ for (game in 1:num_games) {
 # save data as lists
 save_data <- list(RL_data = RL_data, WSLS_data = WSLS_data)
 
+
+
 ```
 
+```{r}
+RL_feedback_list <- lapply(save_data$RL_data, function(x) x$feedback)
+# flatten the list
+RL_feedback <- unlist(RL_feedback_list)
+
+RL_feedback
+```
+
+```{r}
+results_df <- data.frame(
+  Game = rep(1:num_games, each = num_trials),  
+  Trial = rep(1:num_trials, times = num_games),  
+  RL_Choice = numeric(num_games * num_trials),
+  WSLS_Choice = numeric(num_games * num_trials)
+)
+```
+
+```{r}
+data_try <- list(
+  trials = nrow(results_df),  # n of trials
+  choice = results_df$RL_Choice+1,
+  feedback = RL_feedback
+)
+```
+
+# Modelling
+```{r}
+pacman::p_load(rstan)
+
+# compiling model
+model <- stan_model('assignment_2/ACM_Portfolio2/model_RL.stan')
+```
+
+```{r}
+# pass data to stan
+options(mc.cores = 4) # allows for parallel processing
+fit <- sampling(model, data_try, iter=1000, chains = 4) # use at least 4 chains
+```
+
+```{r}
+print(fit)
+```
+
+```{r}
+# extract posterior samples
+params <- rstan::extract(fit)
+
+hist(params$alpha) # lp__ = log posterior
+```
+
+```{r}
+pacman::p_load(shinystan)
+launch_shinystan(fit)
+
+```
 
 # Analyze the results
-
 ```{r}
 library(ggplot2)
 library(dplyr)

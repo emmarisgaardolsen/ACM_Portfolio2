@@ -19,7 +19,7 @@ library(cmdstanr)
 ```{r}
 
 
-## Even though we attempted to make some lists for Stan to use in the Rmd, they're quite complex, and in the end it may be easier to make a simple list in which the parameter names match those in the Stan model file. 
+## Create the data. N.B. note the two variables have different lengths: 1 for n, n for h.
 data_try <- list(
   trials = nrow(results_df),  # n of trials
   choice = results_df$RL_Choice+1, #The +1 is to solve the issue that arises since we use categorical, and it therefor will be in a space of 1 to 2
@@ -32,15 +32,21 @@ data_try <- list(
 
 
 ```{r}
-## Specify where the model is
-file <- file.path("model_RL.stan") #change to path that fits you or set appropriate wd
+pacman::p_load(rstan)
 
+## Specify where the model is
+file <- file.path("model_RL.stan")
+
+```{r}
 # Compile the model
-mod <- cmdstan_model(file, 
+mod <- cmdstanr::cmdstan_model(file, 
                      # this specifies we can parallelize the gradient estimations on multiple cores
                      cpp_options = list(stan_threads = TRUE), 
                      # this is a trick to make it faster
                      stanc_options = list("O1")) 
+```
+
+```{r}
 
 ```
 
