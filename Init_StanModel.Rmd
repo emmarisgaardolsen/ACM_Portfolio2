@@ -16,6 +16,17 @@ library(cmdstanr)
 library(rlang)
 ```
 
+```{r}
+
+
+## Create the data. N.B. note the two variables have different lengths: 1 for n, n for h.
+data_try <- list(
+  trials = results_df$Trial,  # n of trials
+  choice = results_df$RL_Choice,
+  feedback = feedback_df$Cumulative_Feedback
+)
+```
+
 
 ```{r}
 ## Specify where the model is
@@ -30,7 +41,7 @@ mod <- cmdstan_model(file,
 
 # The following command calls Stan with specific options.
 samples <- mod$sample(
-  data = game_results, # the data :-)
+  data = data_try, # the data :-)
   seed = 123,  # a seed, so I always get the same results
   chains = 2,  # how many chains should I fit (to check whether they give the same results)
   parallel_chains = 2, # how many of the chains can be run in parallel?
@@ -38,7 +49,7 @@ samples <- mod$sample(
   iter_warmup = 1000,  # warmup iterations through which hyperparameters (steps and step length) are adjusted
   iter_sampling = 2000, # total number of iterations
   refresh = 0,  # how often to show that iterations have been run
-  output_dir = "Groupwork", # saves the samples as csv so it can be later loaded
+  #output_dir = "ACM_Portfolio2", # saves the samples as csv so it can be later loaded
   max_treedepth = 20, # how many steps in the future to check to avoid u-turns
   adapt_delta = 0.99, # how high a learning rate to adjust hyperparameters during warmup
 )
@@ -46,5 +57,5 @@ samples <- mod$sample(
 # Same the fitted model
 samples$save_object("RL_model.rds")
 ```
-Where  I left off, was this error for running line 32-44
-Error: Missing input data for the following data variables: Trial, RL_Choice, Game.
+Thoughts: The model cant retrieve the fit, because the chains don't finish.
+Stan wants a list. The list's parameters need to match the names in the .stan file 

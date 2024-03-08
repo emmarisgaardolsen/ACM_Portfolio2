@@ -264,7 +264,6 @@ for (trial in 1:num_trials) {
   results_df$RL_Choice[trial] <- results[[1]][[trial]]$RL_choice
   results_df$WSLS_Choice[trial] <- results[[1]][[trial]]$WSLS_choice
 }
-z
 ```
 
 ```{r}
