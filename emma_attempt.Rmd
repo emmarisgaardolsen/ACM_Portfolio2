@@ -320,8 +320,63 @@ ggplot(feedback_df, aes(x = Trial, y = Cumulative_Feedback, color = as.factor(Ga
 ```
 
 
+```{r}
+# Calculate cumulative proportions of choosing 1 for the RL agent
+RL_cumulative_proportions <- lapply(RL_data, function(game) {
+  cumsum(unlist(game$h) == 1) / seq_along(game$h)
+})
+
+# Calculate cumulative proportions of choosing 1 for the WSLS agent
+WSLS_cumulative_proportions <- lapply(WSLS_data, function(game) {
+  cumsum(unlist(game$h) == 1) / seq_along(game$h)
+})
+
+# Average the cumulative proportions across all games for each trial
+RL_avg_cumulative_proportions <- Reduce("+", RL_cumulative_proportions) / length(RL_cumulative_proportions)
+WSLS_avg_cumulative_proportions <- Reduce("+", WSLS_cumulative_proportions) / length(WSLS_cumulative_proportions)
+
+# Convert to a data frame for plotting
+proportions_df <- data.frame(
+  Trial = 1:num_trials,
+  RL_Proportion = RL_avg_cumulative_proportions,
+  WSLS_Proportion = WSLS_avg_cumulative_proportions
+)
+
+```
+
+```{r}
+# Plot for RL Agent: Cumulative Proportion of Choosing 1 per Game
+cum_RL <- ggplot() +
+  geom_line(data = do.call(rbind, lapply(1:length(RL_cumulative_proportions), function(i) {
+    data.frame(Trial = 1:num_trials, 
+               Proportion = RL_cumulative_proportions[[i]], 
+               Game = paste("Game", i))
+  })), aes(x = Trial, y = Proportion, color = Game), size = 1) +
+  labs(title = "RL Agent: Cumulative Proportion of Choosing 1 by Game", 
+       y = "Cumulative Proportion of Choices = 1", x = "Trial") +
+  theme_minimal() +
+  scale_color_viridis_d()  # Using a different color palette for clarity
+
+```
+
+```{r}
+# Plot for WSLS Agent: Cumulative Proportion of Choosing 1 per Game
+cum_WSLS <- ggplot() +
+  geom_line(data = do.call(rbind, lapply(1:length(WSLS_cumulative_proportions), function(i) {
+    data.frame(Trial = 1:num_trials, 
+               Proportion = WSLS_cumulative_proportions[[i]], 
+               Game = paste("Game", i))
+  })), aes(x = Trial, y = Proportion, color = Game), size = 1) +
+  labs(title = "WSLS Agent: Cumulative Proportion of Choosing 1 by Game", 
+       y = "Cumulative Proportion of Choices = 1", x = "Trial") +
+  theme_minimal() +
+  scale_color_viridis_d()  # Consistent color scheme for comparison
+```
 
 
-
-
+```{r}
+# Plot cum_RL and cum_WSLS as two subplots in a single row
+library(gridExtra)
+grid.arrange(cum_RL, cum_WSLS, ncol = 2)
+```
 
