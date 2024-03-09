@@ -213,8 +213,8 @@ plot(dens_temp, main = "Density of temperature")
 pacman::p_load(posterior)
 
 # Defining parameter ranges
-alpha_range <- seq(0.1, 1, by = 0.1)
-theta_range <- seq(0.1, 1, by = 0.1)
+alpha_range <- seq(0.1, 1, by = 0.2)
+theta_range <- seq(0.1, 1, by = 0.2)
 
 # empty dataframe to store the results
 recovery_df <- data.frame(alpha = numeric(), theta = numeric(), 
