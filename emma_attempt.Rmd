@@ -82,7 +82,6 @@ RL_agent_f <- function(value, alpha, theta, feedback) {
   return(list(choice = choice, updatedValue = updatedValue))
 }
   
-  
 ```
 
 
@@ -237,6 +236,12 @@ for (game in 1:num_games) {
 
 # save data as lists
 save_data <- list(RL_data = RL_data, WSLS_data = WSLS_data)
+
+# save data as a results_df csv file 
+write.csv(save_data, "data/results_df.csv")
+```
+
+```{r}
 
 ```
 
