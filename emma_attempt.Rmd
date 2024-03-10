@@ -237,6 +237,20 @@ for (game in 1:num_games) {
 # save data as lists
 save_data <- list(RL_data = RL_data, WSLS_data = WSLS_data)
 
+
+
+
+```
+
+```{r}
+RL_feedback_list <- lapply(save_data$RL_data, function(x) x$feedback)
+# flatten the list
+RL_feedback <- unlist(RL_feedback_list)
+
+RL_feedback
+```
+
+
 # save data as a results_df csv file 
 write.csv(save_data, "data/results_df.csv")
 ```
@@ -256,6 +270,7 @@ RL_feedback <- unlist(RL_feedback_list)
 RL_feedback
 ```
 
+
 ```{r}
 results_df <- data.frame(
   Game = rep(1:num_games, each = num_trials),  
@@ -273,6 +288,7 @@ data_try <- list(
 )
 ```
 
+
 # Modelling
 ```{r}
 pacman::p_load(rstan)
@@ -287,6 +303,39 @@ options(mc.cores = 4) # allows for parallel processing
 fit <- sampling(model, data_try, iter=1000, chains = 4) # use at least 4 chains
 ```
 
+
+# Modelling
+```{r}
+pacman::p_load(rstan)
+
+# compiling model
+model <- stan_model('assignment_2/ACM_Portfolio2/model_RL.stan')
+```
+
+```{r}
+# pass data to stan
+options(mc.cores = 4) # allows for parallel processing
+fit <- sampling(model, data_try, iter=1000, chains = 4) # use at least 4 chains
+```
+
+```{r}
+print(fit)
+```
+
+```{r}
+# extract posterior samples
+params <- rstan::extract(fit)
+
+hist(params$alpha) # lp__ = log posterior
+```
+
+```{r}
+pacman::p_load(shinystan)
+launch_shinystan(fit)
+
+```
+
+# Analyze the results
 ```{r}
 print(fit)
 ```

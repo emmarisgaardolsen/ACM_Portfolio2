@@ -17,6 +17,7 @@ library(cmdstanr)
 ### Before running this, do run emma_attempt.Rmd first
 
 ```{r}
+jorgen
 
 
 ## Even though we attempted to make some lists for Stan to use in the Rmd, they're quite complex, and in the end it may be easier to make a simple list in which the parameter names match those in the Stan model file. 
@@ -38,7 +39,10 @@ data_try <- list(
 pacman::p_load(rstan)
 
 ## Specify where the model is
-file <- file.path("model_RL.stan")
+model <- stan_model("assignment_2/ACM_Portfolio2/model_RL.stan")
+
+
+```
 
 ```{r}
 # Compile the model
