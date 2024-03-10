@@ -36,7 +36,14 @@ model {
 
 generated quantities{
   real<lower=0, upper=1> alpha_prior;
+  real<lower=0, upper=1> alpha_posterior;
   real<lower=0, upper=20> temperature_prior;
+  real<lower=0, upper=20> temperature_posterior;
+  
+  int<lower=0, upper=t> prior_preds_alpha;
+  int<lower=0, upper=t> posterior_preds_alpha;
+  int<lower=0, upper=t> prior_preds_temp;
+  int<lower=0, upper=t> posterior_preds_temp;
   
   real pe;
   vector[2] value;
@@ -44,20 +51,25 @@ generated quantities{
   
   real log_lik;
   
-  alpha_prior = uniform_rng(0,1);
-  temperature_prior = uniform_rng(0,20);
+  alpha_prior = inv_logit(uniform_rng(0,1));
+  alpha_posterior = inv_logit(alpha);
+  temperature_prior = inv_logit(uniform_rng(0,20));
+  temperature_prior = inv_logit(temperature);
+  
+  prior_preds_alpha=binomial_rng(t, alpha_prior);
+  posterior_preds_alpha=binomial_rng(t, inv_logit(alpha));
+  prior_preds_temp=binomial_rng(t, temperature_prior);
+  posterior_preds_temp=binomial_rng(t, inv_logit(temperature));
   
   value = initValue;
   log_lik = 0;
   
   for (t in 1:trials) {
         theta = softmax( temperature * value); // action prob. computed via softmax
-        log_lik = log_lik + categorical_lpmf(choice[t] | theta);
+        log_lik = log_lik + bernoulli_lpdf(choice[t] | theta);
         
         pe = feedback[t] - value[choice[t]]; // compute pe for chosen value only
         value[choice[t]] = value[choice[t]] + alpha * pe; // update chosen V
     }
   
 }
-
-

@@ -82,7 +82,6 @@ RL_agent_f <- function(value, alpha, theta, feedback) {
   return(list(choice = choice, updatedValue = updatedValue))
 }
   
-  
 ```
 
 
@@ -240,6 +239,7 @@ save_data <- list(RL_data = RL_data, WSLS_data = WSLS_data)
 
 
 
+
 ```
 
 ```{r}
@@ -249,6 +249,27 @@ RL_feedback <- unlist(RL_feedback_list)
 
 RL_feedback
 ```
+
+
+# save data as a results_df csv file 
+write.csv(save_data, "data/results_df.csv")
+```
+
+```{r}
+
+
+
+
+```
+
+```{r}
+RL_feedback_list <- lapply(save_data$RL_data, function(x) x$feedback)
+# flatten the list
+RL_feedback <- unlist(RL_feedback_list)
+
+RL_feedback
+```
+
 
 ```{r}
 results_df <- data.frame(
@@ -267,6 +288,7 @@ data_try <- list(
 )
 ```
 
+
 # Modelling
 ```{r}
 pacman::p_load(rstan)
@@ -281,6 +303,39 @@ options(mc.cores = 4) # allows for parallel processing
 fit <- sampling(model, data_try, iter=1000, chains = 4) # use at least 4 chains
 ```
 
+
+# Modelling
+```{r}
+pacman::p_load(rstan)
+
+# compiling model
+model <- stan_model('assignment_2/ACM_Portfolio2/model_RL.stan')
+```
+
+```{r}
+# pass data to stan
+options(mc.cores = 4) # allows for parallel processing
+fit <- sampling(model, data_try, iter=1000, chains = 4) # use at least 4 chains
+```
+
+```{r}
+print(fit)
+```
+
+```{r}
+# extract posterior samples
+params <- rstan::extract(fit)
+
+hist(params$alpha) # lp__ = log posterior
+```
+
+```{r}
+pacman::p_load(shinystan)
+launch_shinystan(fit)
+
+```
+
+# Analyze the results
 ```{r}
 print(fit)
 ```
@@ -376,8 +431,63 @@ ggplot(feedback_df, aes(x = Trial, y = Cumulative_Feedback, color = as.factor(Ga
 ```
 
 
+```{r}
+# Calculate cumulative proportions of choosing 1 for the RL agent
+RL_cumulative_proportions <- lapply(RL_data, function(game) {
+  cumsum(unlist(game$h) == 1) / seq_along(game$h)
+})
+
+# Calculate cumulative proportions of choosing 1 for the WSLS agent
+WSLS_cumulative_proportions <- lapply(WSLS_data, function(game) {
+  cumsum(unlist(game$h) == 1) / seq_along(game$h)
+})
+
+# Average the cumulative proportions across all games for each trial
+RL_avg_cumulative_proportions <- Reduce("+", RL_cumulative_proportions) / length(RL_cumulative_proportions)
+WSLS_avg_cumulative_proportions <- Reduce("+", WSLS_cumulative_proportions) / length(WSLS_cumulative_proportions)
+
+# Convert to a data frame for plotting
+proportions_df <- data.frame(
+  Trial = 1:num_trials,
+  RL_Proportion = RL_avg_cumulative_proportions,
+  WSLS_Proportion = WSLS_avg_cumulative_proportions
+)
+
+```
+
+```{r}
+# Plot for RL Agent: Cumulative Proportion of Choosing 1 per Game
+cum_RL <- ggplot() +
+  geom_line(data = do.call(rbind, lapply(1:length(RL_cumulative_proportions), function(i) {
+    data.frame(Trial = 1:num_trials, 
+               Proportion = RL_cumulative_proportions[[i]], 
+               Game = paste("Game", i))
+  })), aes(x = Trial, y = Proportion, color = Game), size = 1) +
+  labs(title = "RL Agent: Cumulative Proportion of Choosing 1 by Game", 
+       y = "Cumulative Proportion of Choices = 1", x = "Trial") +
+  theme_minimal() +
+  scale_color_viridis_d()  # Using a different color palette for clarity
+
+```
+
+```{r}
+# Plot for WSLS Agent: Cumulative Proportion of Choosing 1 per Game
+cum_WSLS <- ggplot() +
+  geom_line(data = do.call(rbind, lapply(1:length(WSLS_cumulative_proportions), function(i) {
+    data.frame(Trial = 1:num_trials, 
+               Proportion = WSLS_cumulative_proportions[[i]], 
+               Game = paste("Game", i))
+  })), aes(x = Trial, y = Proportion, color = Game), size = 1) +
+  labs(title = "WSLS Agent: Cumulative Proportion of Choosing 1 by Game", 
+       y = "Cumulative Proportion of Choices = 1", x = "Trial") +
+  theme_minimal() +
+  scale_color_viridis_d()  # Consistent color scheme for comparison
+```
 
 
-
-
+```{r}
+# Plot cum_RL and cum_WSLS as two subplots in a single row
+library(gridExtra)
+grid.arrange(cum_RL, cum_WSLS, ncol = 2)
+```
 
