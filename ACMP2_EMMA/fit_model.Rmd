@@ -1,0 +1,33 @@
+---
+title: "fitting"
+author: "EOL"
+date: "2024-03-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(cmdstanr)
+```
+
+```{r}
+file <- file.path("model_RL.stan")
+```
+
+```{r}
+mod <- cmdstan_model(file, cpp_options = list(stan_threads = TRUE),
+                     stanc_options = list("O1"), pedantic = TRUE)
+```
+
+
+```{r}
+# stan file
+file <- file.path("model.stan")
+mod <- cmdstan_model(file, cpp_options = list(stan_threads = TRUE),
+                     stanc_options = list("01"))
+
+```
+

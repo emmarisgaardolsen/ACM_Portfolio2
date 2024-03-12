@@ -1,0 +1,125 @@
+---
+title: "Portfolio2"
+author: "EOL"
+date: "2024-03-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+pacman::p_load(tidyverse)
+```
+
+# A reinforcement learning agent
+```{r}
+
+ValueUpdate <- function(value,choice,alpha,feedback){
+
+  PE <- feedback - value
+  v1 <-  value[1] + alpha * (1-choice) * (feedback - value[1]) # value 1 = current estimate of some value, feedback = new information received, alpha = learning rate, choice is the action taken
+  v2 <- value[2] + alpha * (choice) * (feedback - value[2])
+  updatedValues <- c(v1,v2)
+  return(updatedValues)
+}
+
+softmax_func <-  function(x, tau) { 
+  exp_values <- exp(x / (1/tau))
+  prob <- exp_values / sum(exp_values)
+  return(prob)
+}
+
+RLAgent <- function(alpha, tau, value, choice, feedback){
+  values <- ValueUpdate(value, choice, alpha, feedback)
+  choice_probabilities <- softmax_func(values, tau)
+  newChoice <- sample(c(0, 1), size = 1, prob = choice_probabilities)
+  outcome <- c(newChoice, values)
+  return(outcome)
+}
+```
+
+
+# WSLS Agent
+```{r}
+WSLSAgent <- function(previousChoice, feedback){
+  # If feedback is 1 (win), stay with the previous choice
+  # If feedback is 0 (lose), shift choice
+  newChoice <- ifelse(feedback == 1, previousChoice, 1 - previousChoice)
+  return(newChoice)
+}
+```
+
+
+# Simulating the matching pennies game with the two agents 
+```{r}
+
+# Set the number of trials, learning rate, and temperature parameter 
+trials <- 120
+alpha <- 0.9 # high learning rate
+tau <- 0.5
+
+# tibble for storing simulated data 
+results <- tibble('trial' = rep(NA, trials), # trial number
+                  'RL_choice' = rep(NA,trials), # RL agent's choice
+                  'WSLS_choice' = rep(NA,trials), # WSLS agent's choice
+                  'v1' = rep(NA,trials), # RL agent's value for choice 1 (left)
+                  'v2' = rep(NA,trials), # RL agent's value for choice 2 (right)
+                  'feedback' = rep(NA,trials))
+
+# initialise the agents' choice in the first trial
+results$RL_choice[1] <- rbinom(1,1,0.5)
+results$WSLS_choice[1] <- ifelse(runif(1) > 0.5, 1, 0) # Random initial choice for WSLS agent
+
+# initiatlise the RL agent's values for RL agent
+results$v1[1] <- .5
+results$v2[1] <- .5
+
+results$trial[1] <- 1
+
+for (trial in 2:trials){
+
+  # feedback from previous trial
+  feedback <- ifelse(results$RL_choice[trial-1] == results$WSLS_choice[trial-1],1,0)
+  
+  # updating expected values and make a choice
+  Agent_RL <- RLAgent(alpha = alpha,
+                    tau = tau,
+                    value = c(results$v1[trial-1],results$v2[trial-1]),
+                    choice = results$RL_choice[trial-1],
+                    feedback = feedback)
+  
+  RL_choice <- Agent_RL[1]
+  WSLS_choice <- WSLSAgent(results$WSLS_choice[trial-1], feedback)
+  
+  
+  results$feedback[trial-1] <- feedback
+  results$RL_choice[trial] <- RL_choice
+  results$WSLS_choice[trial] <- WSLS_choice
+  
+  results$v1[trial] <- Agent_RL[2]
+  results$v2[trial] <- Agent_RL[3]
+  
+  results$trial[trial] <- trial
+}
+```
+
+#### visualising: 
+```{r}
+results %>% 
+  ggplot(aes(x = trial)) +
+  geom_line(aes(y = RL_choice, color = "RL Agent")) + # RL Agent line
+  geom_line(aes(y = WSLS_choice, color = "WSLS Agent")) + # WSLS Agent line
+  scale_color_manual(values = c("RL Agent" = "red", "WSLS Agent" = "blue")) +
+  theme_minimal() +
+  labs(color = "Agent Type") # Add this to name your legend
+
+```
+
+```{r}
+write_csv(results, "data/simdata.csv")
+```
+
+
+
