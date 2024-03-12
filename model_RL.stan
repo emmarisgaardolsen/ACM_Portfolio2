@@ -1,6 +1,6 @@
 data {
     int<lower=1> trials; // number of trials
-    array[trials] int<lower=1,upper=2> choice; // 0 or 1
+    array[trials] int<lower=1,upper=2> choice; // 1 or 2
     array[trials] int<lower=0,upper=1> feedback; // feedback i
 } 
 
@@ -19,14 +19,14 @@ model {
     vector[2] value; // value of each action
     vector[2] theta; // action probabilities
     
-    target += uniform_lpdf(alpha | 0, 1); // prior for alpha
-    target += uniform_lpdf(temperature | 0, 20); // prior for temperature
+    target += normal_lpdf(alpha | 0, 1); // prior for alpha
+    target += normal_lpdf(temperature | 0, 20); // prior for temperature
     
     value = initValue;
     
     for (t in 1:trials) {
         theta = softmax( temperature * value); // action prob. computed via softmax
-        target += categorical_lpmf(choice[t] | theta);
+        target += categorical_lpmf(choice[t] | theta); // likelihood of action
         
         pe = feedback[t] - value[choice[t]]; // compute pe for chosen value only
         value[choice[t]] = value[choice[t]] + alpha * pe; // update chosen V
@@ -36,7 +36,10 @@ model {
 
 generated quantities{
   real<lower=0, upper=1> alpha_prior;
+  real<lower=0, upper=1> alpha_posterior;
   real<lower=0, upper=20> temperature_prior;
+  real<lower=0, upper=20> temperature_posterior;
+  
   
   real pe;
   vector[2] value;
@@ -51,11 +54,11 @@ generated quantities{
   log_lik = 0;
   
   for (t in 1:trials) {
-        theta = softmax( temperature * value); // action prob. computed via softmax
+        theta = softmax( temperature * value); 
         log_lik = log_lik + categorical_lpmf(choice[t] | theta);
         
-        pe = feedback[t] - value[choice[t]]; // compute pe for chosen value only
-        value[choice[t]] = value[choice[t]] + alpha * pe; // update chosen V
+        pe = feedback[t] - value[choice[t]];// prediction error for the vhosen value
+        value[choice[t]] = value[choice[t]] + alpha * pe; // updating the chosdne value
     }
   
 }
