@@ -1,0 +1,83 @@
+---
+title: "Stan Model Checks"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+```
+
+```{r}
+# Load required libraries
+library(rstan)
+library(tidyverse)
+```
+
+```{r}
+# Define number of trials and observed data
+num_trials <- 1000
+obs_choice <- rbinom(num_trials, 1, 0.5)  # Example observed choices (0 or 1)
+obs_feedback <- rbinom(num_trials, 1, 0.5)  # Example observed feedback (0 or 1)
+
+# Compile Stan model
+model <- stan_model("Model_RL_try.stan")
+
+# Perform predictive prior check
+prior_samples <- extract(fit, pars = c("alpha", "temperature"), permuted = TRUE)
+
+
+# Check if prior_samples is not empty
+if (length(prior_samples) > 0) {
+  simulated_data_prior <- lapply(1:nrow(prior_samples), function(i) {
+    # Simulate data from the model using sampled parameters
+    data_sim <- extract(model, "pe", "value", "theta", "log_lik", 
+                        data = list(trials = num_trials, choice = obs_choice, feedback = obs_feedback))
+    list(alpha = prior_samples[i, 1], temperature = prior_samples[i, 2], log_lik = data_sim$log_lik)
+  })
+} else {
+  print("Error: prior_samples is empty.")
+}
+
+
+
+# Perform posterior predictive check
+posterior_samples <- as.array(extract(model, "alpha", "temperature"))
+simulated_data_posterior <- replicate(nrow(posterior_samples), {
+  # Simulate data from the model using sampled parameters
+  data_sim <- extract(model, "pe", "value", "theta", "log_lik", data = list(trials = num_trials, choice = obs_choice, feedback = obs_feedback))
+  list(alpha = posterior_samples[i, 1], temperature = posterior_samples[i, 2], log_lik = data_sim$log_lik)
+})
+
+# Perform prior-posterior update check
+prior_posterior_update <- posterior_samples - prior_samples
+
+```
+Predictive Prior Check
+```{r}
+# Compare simulated log likelihoods from the prior predictive check with observed log likelihood
+summary_prior <- replicate(nrow(prior_samples), {
+  mean(simulated_data_prior[[i]]$log_lik)
+}) %>% as_tibble() %>%
+  summarise(mean_log_lik = mean(value))
+summary_prior
+
+```
+
+Posterior Predictive Check
+```{r}
+# Compare simulated log likelihoods from the posterior predictive check with observed log likelihood
+summary_posterior <- replicate(nrow(posterior_samples), {
+  mean(simulated_data_posterior[[i]]$log_lik)
+}) %>% as_tibble() %>%
+  summarise(mean_log_lik = mean(value))
+summary_posterior
+
+```
+
+```{r}
+# Summary of changes in alpha and temperature between prior and posterior
+summary(prior_posterior_update)
+```
+
