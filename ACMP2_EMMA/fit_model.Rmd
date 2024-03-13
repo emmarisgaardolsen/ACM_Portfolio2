@@ -22,12 +22,120 @@ mod <- cmdstan_model(file, cpp_options = list(stan_threads = TRUE),
                      stanc_options = list("O1"), pedantic = TRUE)
 ```
 
-
 ```{r}
-# stan file
-file <- file.path("model.stan")
-mod <- cmdstan_model(file, cpp_options = list(stan_threads = TRUE),
-                     stanc_options = list("01"))
-
+data_file <- "data/simdata.csv"
 ```
 
+```{r}
+df <- read.csv(data_file)
+```
+
+```{r}
+data <- list(
+  trials = length(df$trial), 
+  choice = df$RL_choice, 
+  feedback = df$feedback
+)
+```
+
+```{r}
+head(data)
+```
+
+```{r}
+# parallelization
+options(mc.cores = parallel::detectCores())
+#options(mc.cores = 4) # allows for parallel processing
+
+samples <- mod$sample(
+  data = data,
+  seed = 123,
+  chains = 2,
+  parallel_chains = 2,
+  threads_per_chain = 2,
+  iter_warmup = 2000,
+  iter_sampling = 2000,
+  refresh = 1000,
+  output_dir = "simmodels",
+  max_treedepth = 20,
+  adapt_delta = 0.99,
+)
+```
+
+```{r}
+samples$save_object("simmodels/13marts_fittedRL.rds")
+```
+
+```{r}
+# summarising model 
+samples <- readRDS("simmodels/13marts_fittedRL.rds")
+samples$summary() # summarize the model
+```
+```{r}
+# Extract posterior samples and include sampling of the prior:
+draws_df <- as_draws_df(samples$draws())
+
+# Checking the model's chains
+ggplot(draws_df, aes(.iteration, tau, group = .chain, color = .chain)) +
+  geom_line() +
+  theme_classic()
+
+
+# Checking the model's chains
+ggplot(draws_df, aes(.iteration, alpha, group = .chain, color = .chain)) +
+  geom_line() +
+  theme_classic()
+```
+
+fordi tau ik kan være under 0 og der ik er nogen upper bound, er det måske ok?? 
+
+
+
+```{r}
+ggplot(draws_df) +
+  geom_density(aes(alpha), fill = "blue", alpha = 0.3) +
+  geom_density(aes(alpha_prior), fill = "red", alpha = 0.3) +
+  xlab("Learning Rate") +
+  ylab("Posterior Density") +
+  theme_classic()
+```
+
+```{r}
+ggplot(draws_df) +
+  geom_density(aes(tau), fill = "blue", alpha = 0.3) +
+  geom_density(aes(tau_prior), fill = "red", alpha = 0.3) +
+  xlab("Tau (inverse temperature)") +
+  ylab("Posterior Density") +
+  theme_classic() + xlim(0,8)
+```
+
+
+```{r}
+# Now let's plot the density for theta (prior and posterior)
+ggplot(draws_df) +
+  geom_density(aes(alpha), fill = "blue", alpha = 0.3) +
+  geom_density(aes(alpha_prior), fill = "red", alpha = 0.3) +
+  geom_vline(xintercept = 0.8, linetype = "dashed", color = "black", size = 1.5) +
+  xlab("Alpha") +
+  ylab("Estimate Densities") +
+  theme_classic()
+```
+
+OOOOBS: lav et plot over trials. x akse trials. y akse RL choice og WSLS choice. og y akse for RL agentens expected values for hvert choice (v1 og v2)
+
+WSLS choices fra true simulated dataset
+v1 and v2 from posterior predicted values 
+
+```{r}
+ggplot(draws_df) + 
+  geom_line(data = subset(d1, alpha == 1), aes(trial, prevFeedback), color = "red") +
+  geom_line(data = subset(d1, alpha == 0.9), aes(trial, value2), color = "purple") +
+  geom_line(data = subset(d1, alpha == 0.5), aes(trial, value2), color = "blue") +
+  geom_line(data = subset(d1, alpha == 0.2), aes(trial, value2), color = "green") +
+  theme_bw()
+```
+
+
+OOOOBS: i parameter recovery, hvad var der sket hvis vi havde valgt andre priors?
+
+## Plotting priors 

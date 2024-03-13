@@ -103,6 +103,10 @@ for (trial in 2:trials){
   
   results$trial[trial] <- trial
 }
+
+last_trial_feedback <- ifelse(results$RL_choice[trials] == results$WSLS_choice[trials], 1, 0)
+results$feedback[trials] <- last_trial_feedback
+
 ```
 
 #### visualising: 

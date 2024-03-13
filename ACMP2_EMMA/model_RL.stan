@@ -1,6 +1,6 @@
 data {
     int<lower=1> trials; // number of trials
-    array[trials] int<lower=1,upper=2> choice; // 0 or 1
+    array[trials] int<lower=0,upper=1> choice; // 1 or 2
     array[trials] int<lower=0,upper=1> feedback; // feedback 
 } 
 
@@ -51,7 +51,7 @@ model {
 }
 
 
-/// OBS BELOW I AM IN DOUBT, RICCARDO 
+/// OBS BELOW I AM IN DOUBT, RICCARDO (how to posteriors, and prior preds???)
 generated quantities{
   real<lower=0, upper=1> alpha_prior;
   real<lower=0> tau_prior; // prior for tau
