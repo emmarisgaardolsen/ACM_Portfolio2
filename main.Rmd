@@ -1,313 +1,129 @@
 ---
-title: "Portfolio_2_ACM_JW"
+title: "Portfolio2"
+author: "EOL"
+date: "2024-03-12"
 output: html_document
-date: "2024-02-22"
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+```
 
+```{r}
 pacman::p_load(tidyverse)
 ```
 
-# Portfolio 2
+# A reinforcement learning agent
+```{r}
 
-**Model**: Reinforcement learning Model
+ValueUpdate <- function(value,choice,alpha,feedback){
 
-## Functions
+  PE <- feedback - value
+  v1 <-  value[1] + alpha * (1-choice) * (feedback - value[1]) # value 1 = current estimate of some value, feedback = new information received, alpha = learning rate, choice is the action taken
+  v2 <- value[2] + alpha * (choice) * (feedback - value[2])
+  updatedValues <- c(v1,v2)
+  return(updatedValues)
+}
 
-The following chunk contains four functions
+softmax_func <-  function(x, tau) { 
+  exp_values <- exp(x / (1/tau))
+  prob <- exp_values / sum(exp_values)
+  return(prob)
+}
 
-1. Activation function
-2. Value update function
-3. RL Agent function
-4. Noisy WSLS agent function
-
-The activation function is a softmax and is used to decide the probability of choosing each option. The value update function is designed to update the values of a two-element vector based on a learning rate (alpha), a binary decision (choice), and some feedback from previous trials. The agent function is a reinforcement learning function that uses softmax to decide the probability of choosing each option, makes a choice based on the calculated probabilities outputted from softmax, and updates values based on the choice made and feedback received. The last function is a noisy WSLS agent function that is designed to simulate a noisy win-stay-lose-shift agent against which the reinforcement learning agent can play against.
-
-```{r activation functions}
-###########################
-### Activation function ###
-###########################
-softmax <- function(x, tau) {
-  outcome = 1 / (1 + exp(-tau * x))
+RLAgent <- function(alpha, tau, value, choice, feedback){
+  values <- ValueUpdate(value, choice, alpha, feedback)
+  choice_probabilities <- softmax_func(values, tau)
+  newChoice <- sample(c(0, 1), size = 1, prob = choice_probabilities)
+  outcome <- c(newChoice, values)
   return(outcome)
 }
+```
 
-#############################
-### Value update function ###
-#############################
-ValueUpdate = function(value, alpha, choice, feedback) {
-  
-  PE <- feedback - value # the prediction error 
-  
-  v1 <- value[1] + alpha * (1 - choice) * (feedback - value[1]) # value 1 = current estimate of some value, feedback = new information received, alpha = learning rate, choice is the action taken
 
-  v2 <- value[2] + alpha * (choice) * (feedback - value[2]) 
-  
-  updatedValue <- c(v1, v2)
-  
-  return(updatedValue)
-}
-
-########################################################
-### Agent function (reinforcement learning function) ###
-########################################################
-RL_agent_f <- function(value, alpha, theta, feedback) {
-
-  # here we use softmax to decide the probability of choosing each option
-  choice_probabilities <- softmax(value, theta)
-  
-  # make a choice based on the calculated probabilities outputted from softmax
-  choice <- sample(c(0, 1), size = 1, prob = choice_probabilities)
-  
-  # update values based on the choice made and feedback received
-  updatedValue <- ValueUpdate(value, alpha, choice, feedback)
-  
-  # return the choice and the updated values
-  return(list(choice = choice, updatedValue = updatedValue))
-}
-
-############################################
-### Noisy WSLS agent function (function) ###
-############################################
-WSLSAgentNoise_f <- function(prevChoice, Feedback, noise){
-
-  if (Feedback == 1) {
-    choice <- prevChoice
-  } else if (Feedback == 0) {
-    choice <- 1 - prevChoice
-  }
-  
-  # applying noise
-  if (rbinom(1, 1, noise) == 1) {
-    choice <- rbinom(1, 1, 0.5)
-  }
-  
-  return(choice)
+# WSLS Agent
+```{r}
+WSLSAgent <- function(previousChoice, feedback){
+  # If feedback is 1 (win), stay with the previous choice
+  # If feedback is 0 (lose), shift choice
+  newChoice <- ifelse(feedback == 1, previousChoice, 1 - previousChoice)
+  return(newChoice)
 }
 ```
 
-## Simulation of data with the two agents
-```{r data sim}
-### parameters for the RL Agent
-alpha <- 0.1  # learning rate
-theta <- 0.5  # temperature parameter for softmax
 
-#### parameters for the noisy WSLS Agent
-noise <- 0.1  # probability of choosing randomly due to noise
+# Simulating the matching pennies game with the two agents 
+```{r}
 
-#### number of games and trials
-num_trials <- 1000
+# Set the number of trials, learning rate, and temperature parameter 
+trials <- 120
+alpha <- 0.9 # high learning rate
+tau <- 0.5
 
-# store results
-results <- list()
+# tibble for storing simulated data 
+results <- tibble('trial' = rep(NA, trials), # trial number
+                  'RL_choice' = rep(NA,trials), # RL agent's choice
+                  'WSLS_choice' = rep(NA,trials), # WSLS agent's choice
+                  'v1' = rep(NA,trials), # RL agent's value for choice 1 (left)
+                  'v2' = rep(NA,trials), # RL agent's value for choice 2 (right)
+                  'feedback' = rep(NA,trials))
 
-# initialization 
-value <- c(0.5, 0.5) #values for the RL agent
-prevChoice <- sample(c(0,1), size = 1) #previous choice for the WSLS agent
-WSLS_Feedback <- 0 # initial feedback for WSLS agent (assume loss)
+# initialise the agents' choice in the first trial
+results$RL_choice[1] <- rbinom(1,1,0.5)
+results$WSLS_choice[1] <- ifelse(runif(1) > 0.5, 1, 0) # Random initial choice for WSLS agent
 
-# simulation
-for (t in 1:num_trials) {
+# initiatlise the RL agent's values for RL agent
+results$v1[1] <- .5
+results$v2[1] <- .5
+
+results$trial[1] <- 1
+
+for (trial in 2:trials){
+
+  # feedback from previous trial
+  feedback <- ifelse(results$RL_choice[trial-1] == results$WSLS_choice[trial-1],1,0)
   
-  # call the RL agent function
-  RL_outcome <- RL_agent_f(value = value, alpha = alpha, theta = theta, feedback = WSLS_Feedback)
+  # updating expected values and make a choice
+  Agent_RL <- RLAgent(alpha = alpha,
+                    tau = tau,
+                    value = c(results$v1[trial-1],results$v2[trial-1]),
+                    choice = results$RL_choice[trial-1],
+                    feedback = feedback)
   
-  # update value and choice for RL Agent
-  value <- RL_outcome$updatedValue
-  RL_Choice <- RL_outcome$choice
+  RL_choice <- Agent_RL[1]
+  WSLS_choice <- WSLSAgent(results$WSLS_choice[trial-1], feedback)
   
-  # WSLS agent makes its decision
-  WSLS_Choice <- WSLSAgentNoise_f(prevChoice = prevChoice, Feedback = WSLS_Feedback, noise = noise)
   
-  # feedback for the RL and WSLS agents; same choice = win, different choice = lose
-  if (RL_Choice == WSLS_Choice) {
-    RL_Feedback <- 1  # Win
-    WSLS_Feedback <- 0
-  } else {
-    RL_Feedback <- 0  # Lose
-    WSLS_Feedback <- 1
-  }
+  results$feedback[trial-1] <- feedback
+  results$RL_choice[trial] <- RL_choice
+  results$WSLS_choice[trial] <- WSLS_choice
   
-  # updating the previous choice made by the WSLS agent
-  prevChoice <- WSLS_Choice
-
-  # store results
-  results[[t]] <- data.frame(RL_Choice = RL_Choice, RL_Feedback = RL_Feedback, WSLS_Choice = WSLS_Choice, WSLS_Feedback = WSLS_Feedback)   
+  results$v1[trial] <- Agent_RL[2]
+  results$v2[trial] <- Agent_RL[3]
+  
+  results$trial[trial] <- trial
 }
 
-# convert results to data frame
-results_df <- do.call(rbind, results)
+last_trial_feedback <- ifelse(results$RL_choice[trials] == results$WSLS_choice[trials], 1, 0)
+results$feedback[trials] <- last_trial_feedback
+
 ```
 
-## Making data ready for stan
+#### visualising: 
 ```{r}
-# converting results to integer lists
-RL_Choice <- as.integer(results_df$RL_Choice+1)
-RL_Feedback <- as.integer(results_df$RL_Feedback)
-WSLS_Choice <- as.integer(results_df$WSLS_Choice)
-WSLS_Feedback <- as.integer(results_df$WSLS_Feedback)
-```
+results %>% 
+  ggplot(aes(x = trial)) +
+  geom_line(aes(y = RL_choice, color = "RL Agent")) + # RL Agent line
+  geom_line(aes(y = WSLS_choice, color = "WSLS Agent")) + # WSLS Agent line
+  scale_color_manual(values = c("RL Agent" = "red", "WSLS Agent" = "blue")) +
+  theme_minimal() +
+  labs(color = "Agent Type") # Add this to name your legend
 
-## Modelling with stan (using rstan and not cmdstanr or brms)
-
-### Compiling model
-```{r}
-# Load rstan
-pacman::p_load(rstan)
-
-# Compiling model
-model <- stan_model("model_RL.stan")
-```
-
-### Fitting the model
-```{r}
-
-# parallelization
-options(mc.cores = parallel::detectCores())
-#options(mc.cores = 4) # allows for parallel processing
-
-fit <- sampling(model, 
-                data = list(trials = num_trials, choice = RL_Choice, feedback = RL_Feedback), # the data
-                seed = 12345, # seed
-                chains = 4, # number of chains
-                iter = 5000, # total number of iterations (including warmup)
-                warmup = 1000,
-                # tree depth
-                control = list(max_treedepth = 20, adapt_delta = 0.99) #tree depth =  how many steps in the future to check to avoid u-turns; adapt_delta = # how high a learning rate to adjust hyperparameters during warmup
-)
-```
-
-### Assessing the fit
-```{r}
-print(fit)
-```
-
-### Plotting posterior samples
-```{r}
-# extract posterior samples
-params <- rstan::extract(fit)
-
-hist(params$temperature)
 ```
 
 ```{r}
-# Checking the model's chains
-traceplot(fit, pars = c("temperature", "alpha", "value[1]", "value[2]"))
+write_csv(results, "data/simdata.csv")
 ```
 
 
-```{r}
-# Now let's plot the density for alpha and temperature (prior and posterior)
-par(mfrow = c(1, 2))
-dens_alpha <- density(params$alpha)
-dens_temp <- density(params$temperature)
-plot(dens_alpha, main = "Density of alpha")
-plot(dens_temp, main = "Density of temperature")
-```
 
-## Parameter recovery
-```{r }
-# Add libraries needed for parameter recovery
-pacman::p_load(posterior)
-
-# Defining parameter ranges
-alpha_range <- seq(0.1, 1, by = 0.2)
-theta_range <- seq(0.1, 1, by = 0.2)
-
-# empty dataframe to store the results
-recovery_df <- data.frame(alpha = numeric(), theta = numeric(), 
-                          estimated_alpha = numeric(), estimated_theta = numeric())
-
-# Loop over all combinations of alpha and theta
-for (alpha in alpha_range) {
-  for (theta in theta_range) {
-      
-      # parameters for the RL Agent
-      alpha <- alpha  # learning rate
-      theta <- theta  # temperature parameter for softmax
-
-      # re-initialize values
-      value <- c(0.5, 0.5) # values for the RL agent
-      prevChoice <- sample(c(0,1), size = 1) # previous choice for the WSLS agent
-      WSLS_Feedback <- 0 # initial feedback for WSLS agent (assume loss)
-
-      # Simulation
-      for(t in 1:num_trials) {
-        # call the RL agent function
-        RL_outcome <- RL_agent_f(value = value, alpha = alpha, theta = theta, feedback = WSLS_Feedback)
-
-        # update value and choice for RL Agent
-        value <- RL_outcome$updatedValue
-        RL_Choice <- RL_outcome$choice
-        
-        # WSLS agent makes its decision
-        WSLS_Choice <- WSLSAgentNoise_f(prevChoice = prevChoice, Feedback = WSLS_Feedback, noise = noise)
-        
-        # feedback for the RL and WSLS agents; same choice = win, different choice = lose
-        if (RL_Choice == WSLS_Choice) {
-          RL_Feedback <- 1 
-          WSLS_Feedback <- 0
-        } else {
-          RL_Feedback <- 0  
-          WSLS_Feedback <- 1
-        }
-
-        # Updating the previous choice made by the WSLS agent
-        prevChoice <- WSLS_Choice
-
-        # Store results
-        results[[t]] <- data
-
-                # Store results
-        results[[t]] <- data.frame(RL_Choice = RL_Choice, RL_Feedback = RL_Feedback)
-      }
-      
-      # Convert results to data frame
-      sim_data <- do.call(rbind, results)
-
-      # Adjust the data code to match simulation
-      RL_Choice <- as.integer(sim_data$RL_Choice+1)
-      RL_Feedback <- as.integer(sim_data$RL_Feedback)
-      
-      # Re-do the model fit on this simulated data
-      fit <- sampling(model, 
-                      data = list(trials = num_trials, choice = RL_Choice, feedback = RL_Feedback), 
-                      seed = 12345, 
-                      chains = 4, 
-                      iter = 2000, 
-                      warmup = 1000,
-                      control = list(max_treedepth = 20, adapt_delta = 0.99))
-                      
-      # Compare recovered parameters against true
-      params <- rstan::extract(fit)
-      estimated_alpha <- mean(params$alpha)
-      estimated_theta <- mean(params$temperature)
-      
-      # Append to recovery_df for later inspection
-      recovery_df <- rbind(recovery_df, data.frame(alpha=alpha, 
-                                                  theta=theta, 
-                                                  estimated_alpha=estimated_alpha, 
-                                                  estimated_theta=estimated_theta))
-  }
-}
-
-# Check recovery data 
-print(recovery_df)
-
-
-write.csv(recovery_df, "parameter_recovery.csv")
-```
-
-```{r}
-ggplot(recovery_df, aes(x=alpha, y=estimated_alpha)) +
-  geom_point() +
-  geom_abline(intercept = 0, slope = 1, color = 'red') +
-  labs(x = "Original alpha", y = "Estimated alpha", title = "Parameter recovery for Alpha")
-
-ggplot(recovery_df, aes(x=theta, y=estimated_theta)) +
-  geom_point() +
-  geom_abline(intercept = 0, slope = 1, color = 'red') +
-  labs(x = "Original theta", y = "Estimated theta", title = "Parameter recovery for Theta")
-```
