@@ -213,8 +213,8 @@ plot(dens_temp, main = "Density of temperature")
 pacman::p_load(posterior)
 
 # Defining parameter ranges
-alpha_range <- seq(0.1, 1, by = 0.2)
-theta_range <- seq(0.1, 1, by = 0.2)
+alpha_range <- seq(0.1, 1, by = 0.3)
+theta_range <- seq(0.1, 1, by = 0.3)
 
 # empty dataframe to store the results
 recovery_df <- data.frame(alpha = numeric(), theta = numeric(), 
@@ -305,6 +305,7 @@ ggplot(recovery_df, aes(x=alpha, y=estimated_alpha)) +
   geom_point() +
   geom_abline(intercept = 0, slope = 1, color = 'red') +
   labs(x = "Original alpha", y = "Estimated alpha", title = "Parameter recovery for Alpha")
+
 
 ggplot(recovery_df, aes(x=theta, y=estimated_theta)) +
   geom_point() +
