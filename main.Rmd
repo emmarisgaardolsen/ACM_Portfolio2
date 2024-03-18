@@ -7,7 +7,15 @@ date: "2024-02-22"
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
-pacman::p_load(tidyverse)
+pacman::p_load(cmdstanr,
+               tidyverse,
+               ggplot2,
+               dplyr,
+               gridExtra,
+               here,
+               posterior,
+               brms,
+               tidybayes)
 ```
 
 # Portfolio 2
@@ -98,7 +106,7 @@ theta <- 0.5  # temperature parameter for softmax
 noise <- 0.1  # probability of choosing randomly due to noise
 
 #### number of games and trials
-num_trials <- 1000
+num_trials <- 120
 
 # store results
 results <- list()
@@ -139,6 +147,10 @@ for (t in 1:num_trials) {
 
 # convert results to data frame
 results_df <- do.call(rbind, results)
+```
+
+```{r}
+view(results_df)
 ```
 
 ## Making data ready for stan
