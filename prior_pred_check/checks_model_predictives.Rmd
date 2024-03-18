@@ -1,0 +1,713 @@
+---
+title: "16MARTS"
+author: "EOL"
+date: "2024-03-16"
+output: html_document
+---
+
+```{r}
+pacman::p_load(cmdstanr,
+               tidyverse,
+               ggplot2,
+               dplyr,
+               gridExtra,
+               here,
+               posterior,
+               brms,
+               tidybayes)
+```
+
+# A reinforcement learning agent
+```{r}
+
+ValueUpdate <- function(value,choice,alpha,feedback){
+
+  PE <- feedback - value
+  v1 <-  value[1] + alpha * (1-choice) * (feedback - value[1]) # value 1 = current estimate of some value, feedback = new information received, alpha = learning rate, choice is the action taken
+  v2 <- value[2] + alpha * (choice) * (feedback - value[2])
+  updatedValues <- c(v1,v2)
+  return(updatedValues)
+}
+
+softmax_func <-  function(x, tau) { 
+  exp_values <- exp(x / (1/tau))
+  prob <- exp_values / sum(exp_values)
+  return(prob)
+}
+
+
+RLAgent <- function(alpha, tau, value, choice, feedback){
+  values <- ValueUpdate(value, choice, alpha, feedback)
+  choice_probabilities <- softmax_func(values, tau)
+  newChoice <- sample(c(0, 1), size = 1, prob = choice_probabilities)
+  outcome <- list(newChoice = newChoice, values = values)
+  return(outcome)
+}
+
+
+```
+
+# WSLS Agent
+```{r}
+WSLSAgent <- function(previousChoice, feedback){
+  # If feedback is 1 (win), stay with the previous choice
+  # If feedback is 0 (lose), shift choice
+  newChoice <- ifelse(feedback == 1, previousChoice, 1 - previousChoice)
+  return(newChoice)
+}
+```
+
+
+# SIMULATE JUST ONE GAME OF EACH? 
+```{r}
+# parameters for simulation
+combinations <- expand.grid(alpha = c(0.1, 0.9), tau = c(0.1, 5))
+trials <- 120
+
+# prepare the tibble for concatenating results
+all_results <- tibble()
+
+for(i in 1:nrow(combinations)) {
+    alpha <- combinations$alpha[i]
+    tau <- combinations$tau[i]
+    
+    results <- tibble('game' = rep(i, trials),
+                      'trial' = 1:trials,
+                      'RL_choice' = rep(NA, trials),
+                      'WSLS_choice' = rep(NA, trials),
+                      'v1' = rep(NA, trials),
+                      'v2' = rep(NA, trials),
+                      'feedback' = rep(NA, trials),
+                      'alpha' = alpha,
+                      'tau' = tau,
+                      'cumulativeRL' = rep(NA, trials))
+
+    results$RL_choice[1] <- rbinom(1, 1, 0.5)
+    results$WSLS_choice[1] <- ifelse(runif(1) > 0.5, 1, 0)
+    results$v1[1] <- 0.5
+    results$v2[1] <- 0.5
+
+    for(trial in 2:trials){
+      feedback <- ifelse(results$RL_choice[trial-1] == results$WSLS_choice[trial-1], 1, 0)
+      Agent_RL <- RLAgent(alpha, tau, c(results$v1[trial-1], results$v2[trial-1]), results$RL_choice[trial-1], feedback)
+
+      results$feedback[trial-1] <- feedback
+      results$RL_choice[trial] <- Agent_RL$newChoice
+      results$WSLS_choice[trial] <- WSLSAgent(results$WSLS_choice[trial-1], feedback)
+      results$v1[trial] <- Agent_RL$values[1]
+      results$v2[trial] <- Agent_RL$values[2]
+      results$cumulativeRL[trial] <- sum(results$RL_choice[1:trial]) / trial
+    }
+
+    last_trial_feedback <- ifelse(results$RL_choice[trials] == results$WSLS_choice[trials], 1, 0)
+    results$feedback[trials] <- last_trial_feedback
+
+    all_results <- bind_rows(all_results, results)
+  }
+```
+
+```{r}
+d <- all_results 
+```
+
+```{r}
+#write_csv(d, "data/simdata_multiplevalues.csv")
+```
+
+
+## Visualise choices across trials for 4 combinations (lowlow, lowhigh, highlow, highhigh)
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# read csv
+#d <- read_csv("rest/data/simdata_multiplevalues.csv")
+
+# create a new column in d for combination labels
+d <- d %>%
+  mutate(combination = case_when(
+    alpha == 0.1 & tau == 0.1 ~ "LowAlphaLowTau",
+    alpha == 0.9 & tau == 5 ~ "HighAlphaHighTau",
+    alpha == 0.1 & tau == 5 ~ "LowAlphaHighTau",
+    alpha == 0.9 & tau == 0.1 ~ "HighAlphaLowTau",
+    TRUE ~ as.character(NA)  # for any combination that doesn't match the above
+  ))
+
+
+
+# filter out rows without a combination label (there shouldn't be any)
+d_filtered <- d %>% filter(!is.na(combination))
+
+# plot
+ggplot(d_filtered, aes(x = trial)) +
+  geom_line(aes(y = RL_choice, color = "RL Agent")) +
+  geom_line(aes(y = WSLS_choice, color = "WSLS Agent")) +
+  scale_color_manual(values = c("RL Agent" = "red", "WSLS Agent" = "blue")) +
+  facet_wrap(~ combination) +  # creates subfigures for each combination
+  theme_minimal() +
+  labs(color = "Agent Type")  # legend title
+```
+
+## Stan model 
+```{r}
+file <- file.path("clean_files/model_RL.stan")
+mod <- cmdstan_model(file, cpp_options = list(stan_threads = TRUE), stanc_options = list("O1"), pedantic = TRUE)
+```
+
+## Plots and stan stuff
+```{r}
+perform_recovery <- function(subset_df, subset_name) {
+  output_dir <- paste0("simmodels/", subset_name)
+
+  # check if the directory exists, and if not, create it
+  if (!dir.exists(output_dir)) {
+    dir.create(output_dir, recursive = TRUE)
+  }
+
+  data <- list(
+    trials = nrow(subset_df),
+    choice = subset_df$RL_choice,
+    feedback = subset_df$feedback
+  )
+
+  samples <- mod$sample(
+    data = data,
+    seed = 123,
+    chains = 2,
+    parallel_chains = 2,
+    threads_per_chain = 2,
+    iter_warmup = 2000,
+    iter_sampling = 2000,
+    refresh = 1000,
+    output_dir = output_dir,
+    max_treedepth = 20, # 
+    adapt_delta = 0.99 
+  )
+
+  samples$save_object(paste0(output_dir, "/", subset_name, "_fittedRL.rds"))
+  return(samples)
+}
+```
+
+# prior predictive checks
+```{r}
+# Define the number of trials for the simulation
+trials <- 100  # Feel free to change this number to suit your needs
+
+# Generate placeholder data 
+data_list <- list(trials = trials, 
+                  choice = rep(0, trials),   # Placeholder, not used in prior predictive simulations
+                  feedback = rep(0, trials))  # Placeholder, not used in prior predictive simulations
+
+# Use the fixed_param sampler to only draw from the prior
+prior_predictive <- mod$sample(data = data_list,
+                               fixed_param = TRUE, # When fixed_param = TRUE, the Stan sampler generates samples only from prior distribution. Used for prior predictive checks, where you want to see what kind of data your model predicts based solely on the prior and not the observed data.
+                               threads_per_chain = 2,
+                               iter_sampling = 2000,  # Number of samples to draw
+                               iter_warmup = 100,
+                               chains = 1)
+
+# Extract draws and visualize them
+prior_draws_df <- posterior::as_draws_df(prior_predictive$draws())
+
+# Plot histograms for alpha_prior and tau_prior
+par(mfrow = c(1, 2))
+
+# Plot the histograms
+hist(prior_draws_df$alpha_prior, 
+  main = "Histogram of alpha_prior",
+  xlab = "alpha_prior", col = "skyblue")
+
+hist(prior_draws_df$tau_prior,
+  main = "Histogram of tau_prior",
+  xlab = "tau_prior", col = "salmon")
+```
+
+```{r}
+# Flat priors model
+mod_flat <- cmdstan_model("clean_files/stan_models_ppc/model_RL_flat_priors.stan", cpp_options = list(stan_threads = TRUE), stanc_options = list("O1"), pedantic = TRUE)
+
+# Weak priors model
+mod_weak <- cmdstan_model("clean_files/stan_models_ppc/model_RL_weak_priors.stan", cpp_options = list(stan_threads = TRUE), stanc_options = list("O1"), pedantic = TRUE)
+
+# Informative priors model
+mod_informed <- cmdstan_model("clean_files/stan_models_ppc/model_RL_informative_priors.stan", cpp_options = list(stan_threads = TRUE), stanc_options = list("O1"), pedantic = TRUE)
+
+# data
+trials = 120
+data_list <- list(trials = trials, choice = rep(0,trials), feedback = rep(0,trials))  # Dummy data since it won't be used
+
+# Sample flat
+prior_pred_flat <- mod_flat$sample(data = data_list, fixed_param = TRUE, threads_per_chain = 2, iter_sampling = 2000, iter_warmup = 2000, chains = 1)
+# Extracting choice predictions flat priors
+choice_pred_flat <- posterior::as_draws_df(prior_pred_flat$draws())
+
+# Sample weak
+prior_pred_weak <- mod_weak$sample(data = data_list, fixed_param = TRUE, threads_per_chain = 2, iter_sampling = 2000, iter_warmup = 2000, chains = 1)
+# Extracting choice predictions weak priors
+choice_pred_weak <- posterior::as_draws_df(prior_pred_weak$draws())
+
+# Sample informed
+prior_pred_informed <- mod_informed$sample(data = data_list, fixed_param = TRUE, threads_per_chain = 2, iter_sampling = 2000, iter_warmup = 2000, chains = 1)
+# Extracting choice predictions informed priors
+choice_pred_informed <- posterior::as_draws_df(prior_pred_informed$draws())
+
+# Calculate mean choice_prediction across trials for each draw
+choice_pred_flat$mean_choice_prediction <- rowMeans(choice_pred_flat[, grepl("choice_prediction", names(choice_pred_flat))])
+choice_pred_weak$mean_choice_prediction <- rowMeans(choice_pred_weak[, grepl("choice_prediction", names(choice_pred_weak))])
+choice_pred_informed$mean_choice_prediction <- rowMeans(choice_pred_informed[, grepl("choice_prediction", names(choice_pred_informed))])
+
+# Create data frames for plotting
+flat_df <- data.frame(mean_choice_prediction = choice_pred_flat$mean_choice_prediction, prior = 'Flat')
+weak_df <- data.frame(mean_choice_prediction = choice_pred_weak$mean_choice_prediction, prior = 'Weak')
+informed_df <- data.frame(mean_choice_prediction = choice_pred_informed$mean_choice_prediction, prior = 'Informed')
+
+# Combine the data frames
+combined_df <- rbind(flat_df, weak_df, informed_df)
+
+# Plot using ggplot2
+library(ggplot2)
+ggplot(combined_df, aes(x = mean_choice_prediction, fill = prior)) +
+  geom_histogram(bins = 30, alpha = 0.6, position = "identity") +
+  scale_fill_manual(values=c("Flat"="blue", "Weak"="orange", "Informed"="green")) +
+  labs(title = "Summary of Prior Predictive Checks - Mean Choice Prediction",
+       x = "Mean Choice Prediction",
+       y = "Frequency") +
+  theme_minimal() +
+  facet_wrap(~prior)
+```
+
+
+
+```{r}
+combination_labels <- unique(d$combination)
+
+results <- lapply(combination_labels, function(label) {
+  subset_df <- d[d$combination == label, ]
+  perform_recovery(subset_df, label)
+})
+```
+
+## First plotting the prior distributions
+
+```{r}
+## Tau Prior! 
+logtaus <- rnorm(8000, 0, 1)
+taus <- exp(logtaus)
+data_tau <- data.frame(taus = taus, prior = "Lognormal (0, 1)")
+
+# plot density plot
+ggplot(data_tau, aes(x = taus)) +
+  geom_density(fill = "blue", alpha = 0.3) +
+  labs(title = "Prior Distribution of Tau (Lognormal(0, 1))",
+       x = "Tau",
+       y = "Density")
+
+```
+
+```{r}
+## Alpha Prior
+alpha <- rbeta(8000, 1, 1)
+data_alpha <- data.frame(alpha = alpha, prior = "Beta (1, 1)")
+
+# plot density plot
+ggplot(data_alpha, aes(x = alpha)) +
+  geom_density(fill = "blue", alpha = 0.3) +
+  labs(title = "Prior Distribution of Tau (Lognormal(0, 1))",
+       x = "Tau",
+       y = "Density")
+
+```
+
+## Visualising
+```{r}
+filepath <- ("simmodels/HighAlphaHighTau/HighAlphaHighTau_fittedRL.rds")
+samples <- readRDS(filepath)
+print(samples$summary())
+
+```
+
+
+```{r}
+# Names of four different fits:
+fit_names <- c("LowAlphaLowTau", "HighAlphaHighTau", "LowAlphaHighTau", "HighAlphaLowTau")
+
+# Loop through each fit name, read the RDS file, and summarize the model
+for (fit_name in fit_names) {
+  cat("Summarizing model for:", fit_name, "\n")
+
+  # Construct the file path from the fit name
+  file_path <- paste0("simmodels/", fit_name, "/", fit_name, "_fittedRL.rds")
+
+  # Read the fitted model
+  samples <- readRDS(file_path)
+
+  # Summarize the model
+  print(samples$summary())
+}
+```
+
+```{r}
+library(ggplot2)
+library(posterior) # Assuming this is the package you're using for as_draws_df
+library(patchwork) # For combining plots
+
+# get true values for the vertical line
+get_true_value <- function(fit_name, parameter) {
+  if (parameter == "alpha") {
+    return(list(LowAlphaLowTau=0.1, HighAlphaHighTau=0.9, LowAlphaHighTau=0.1, HighAlphaLowTau=0.9)[[fit_name]])
+  } else if (parameter == "tau") {
+    return(list(LowAlphaLowTau=0.1, HighAlphaHighTau=5, LowAlphaHighTau=5, HighAlphaLowTau=0.1)[[fit_name]])
+  }
+}
+
+# Names of four different files:
+fit_names <- c("LowAlphaLowTau", "HighAlphaHighTau", "LowAlphaHighTau", "HighAlphaLowTau")
+```
+
+
+```{r}
+####### ------------ MAKE ALPHA DENSITY PLOT ------------ #######
+
+# initialize an empty list to store plots
+alpha_density_plots <- list()
+
+for (fit_name in fit_names) {
+  
+  # construct the file path from the fit name
+  file_path <- paste0("simmodels/", fit_name, "/", fit_name, "_fittedRL.rds")
+  
+  # read the fitted model
+  samples <- readRDS(file_path)
+  
+  # extract posterior samples
+  draws_df <- as_draws_df(samples$draws())
+  
+  # true values for alpha and tau for the current fit
+  true_alpha <- get_true_value(fit_name, "alpha")
+  
+  # plotting posterior density for alpha with true value
+  p_alpha_density_true <- ggplot(draws_df) +
+    geom_density(aes(alpha), fill = "blue", alpha = 0.3) +
+    geom_density(aes(alpha_prior), fill = "red", alpha = 0.3) +
+    geom_vline(xintercept = true_alpha, linetype = "dashed", color = "black", size = 1.5) +
+    xlab("Learning Rate") +
+    ylab("Posterior Density") +
+    theme_classic() +
+    ggtitle(paste("Posterior Density for Alpha -", fit_name))+
+    theme(plot.title = element_text(size = 10))
+  
+  # Add the plot to the list
+  alpha_density_plots[[fit_name]] <- p_alpha_density_true
+}
+
+# Combine the plots into a 2x2 grid
+combined_plot <- alpha_density_plots[[1]] + alpha_density_plots[[2]] + alpha_density_plots[[3]] + alpha_density_plots[[4]] + plot_layout(ncol = 2, nrow = 2)
+
+# Print the combined plot
+print(combined_plot)
+
+# If you want to save the combined plot to a file
+#ggsave("plots/priorpostupdate/priorpocombined_alpha_density_plots.png", plot = combined_plot, width = 10, height = 8)
+```
+
+
+```{r}
+####### ------------ MAKE TAU DENSITY PLOT ------------ #######
+
+# Initialize an empty list to store plots
+tau_density_plots <- list()
+
+for (fit_name in fit_names) {
+  # construct the file path from the fit name
+  file_path <- paste0("simmodels/", fit_name, "/", fit_name, "_fittedRL.rds")
+  
+  # read the fitted model
+  samples <- readRDS(file_path)
+  
+  # extract posterior samples
+  draws_df <- as_draws_df(samples$draws())
+  
+  # true values for alpha and tau for the current fit
+  true_tau <- get_true_value(fit_name, "tau")
+  
+  # plotting posterior density for alpha with true value
+  p_tau_density_true <- ggplot(draws_df) +
+    geom_density(aes(tau), fill = "blue", alpha = 0.3) +
+    geom_density(aes(tau_prior), fill = "red", alpha = 0.3) +
+    geom_vline(xintercept = true_tau, linetype = "dashed", color = "black", size = 1.5) +
+    xlab("Learning Rate") +
+    ylab("Posterior Density") +
+    theme_classic() +
+    xlim(0,7)+ 
+    ggtitle(paste("Posterior Density for Tau -", fit_name))+
+    theme(plot.title = element_text(size = 10))
+  
+  # Add the plot to the list
+  tau_density_plots[[fit_name]] <- p_tau_density_true
+}
+
+# Combine the plots into a 2x2 grid
+combined_plot <- tau_density_plots[[1]] + tau_density_plots[[2]] + tau_density_plots[[3]] + tau_density_plots[[4]] + plot_layout(ncol = 2, nrow = 2)
+
+# Print the combined plot
+print(combined_plot)
+
+# If you want to save the combined plot to a file
+#ggsave("plots/priorpostupdate/combined_tau_density_plots.png", plot = combined_plot, width = 10, height = 8)
+```
+
+
+
+```{r}
+library(ggplot2)
+library(posterior) # Assuming this is the package you're using for as_draws_df
+
+# get true values for the vertical line
+get_true_value <- function(fit_name, parameter) {
+  if (parameter == "alpha") {
+    return(list(LowAlphaLowTau=0.1, HighAlphaHighTau=0.9, LowAlphaHighTau=0.1, HighAlphaLowTau=0.9)[[fit_name]])
+  } else if (parameter == "tau") {
+    return(list(LowAlphaLowTau=0.1, HighAlphaHighTau=5, LowAlphaHighTau=5, HighAlphaLowTau=0.1)[[fit_name]])
+  }
+}
+
+# Names of four different files:
+fit_names <- c("LowAlphaLowTau", "HighAlphaHighTau", "LowAlphaHighTau", "HighAlphaLowTau")
+
+# loop through each fit name, read the RDS file, visualize chain convergence, and plot posterior densities
+for (fit_name in fit_names) {
+  # construct the file path from the fit name
+  file_path <- paste0("simmodels/", fit_name, "/", fit_name, "_fittedRL.rds")
+  
+  # read the fitted model
+  samples <- readRDS(file_path)
+  
+  # extract posterior samples
+  draws_df <- as_draws_df(samples$draws())
+  
+  # true values for alpha and tau for the current fit
+  true_alpha <- get_true_value(fit_name, "alpha")
+  true_tau <- get_true_value(fit_name, "tau")
+  
+  # Plotting the model's chains for tau
+  p_tau <- ggplot(draws_df, aes(.iteration, tau, group = .chain, color = .chain)) +
+    geom_line() +
+    theme_classic() +
+    ggtitle(paste("Chain Convergence for Tau -", fit_name))
+  print(p_tau)
+  ggsave(paste0("plots/chains/", fit_name, "_tau_chain_convergence.png"), plot = p_tau)
+  
+  # Plotting the model's chains for alpha
+  p_alpha <- ggplot(draws_df, aes(.iteration, alpha, group = .chain, color = .chain)) +
+    geom_line() +
+    theme_classic() +
+    ggtitle(paste("Chain Convergence for Alpha -", fit_name))
+  print(p_alpha)
+  ggsave(paste0("plots/chains/", fit_name, "_alpha_chain_convergence.png"), plot = p_alpha)
+  
+  # plotting posterior density for alpha with true value
+  p_alpha_density_true <- ggplot(draws_df) +
+    geom_density(aes(alpha), fill = "blue", alpha = 0.3) +
+    geom_density(aes(alpha_prior), fill = "red", alpha = 0.3) +
+    geom_vline(xintercept = true_alpha, linetype = "dashed", color = "black", size = 1.5) +
+    xlab("Learning Rate") +
+    ylab("Posterior Density") +
+    theme_classic() +
+    ggtitle(paste("Posterior Density for Alpha -", fit_name))
+  print(p_alpha_density_true)
+  ggsave(paste0("plots/priorpostupdate/", fit_name, "_alpha_posterior_density.png"), plot = p_alpha_density_true)
+  
+  # plotting posterior density for tau with true value
+  p_tau_density_true <- ggplot(draws_df) +
+    geom_density(aes(tau), fill = "blue", alpha = 0.3) +
+    geom_density(aes(tau_prior), fill = "red", alpha = 0.3) +
+    geom_vline(xintercept = true_tau, linetype = "dashed", color = "black", size = 1.5) +
+    xlab("Tau (inverse temperature)") +
+    ylab("Posterior Density") +
+    theme_classic() +
+    xlim(0, 8) +
+    ggtitle(paste("Posterior Density for Tau -", fit_name))
+  print(p_tau_density_true)
+  
+  ggsave(paste0("plots/priorpostupdate/", fit_name, "_tau_posterior_density.png"), plot = p_tau_density_true)
+  
+  # empty line for better separation in output
+  cat("\n\n")
+}
+
+# show the saved plots
+
+```
+
+
+```{r}
+library(bayesplot)
+
+# trace plots 
+mcmc_trace(samples$draws(c("alpha", "tau")))
+
+mcmc_pairs(samples$draws(c("alpha", "tau")))
+
+## parameter estimates
+mcmc_intervals(samples$draws(c("alpha", "tau")))
+```
+
+
+```{r}
+p1 <- ggplot(d, aes(trial, cumulativeRL, group = alpha, color = alpha)) + 
+  geom_line() + 
+  geom_hline(yintercept = 0.5, linetype = "dashed") + 
+  ylim(0,1) + 
+  facet_wrap(.~tau) + 
+  theme_classic()
+p1
+```
+
+```{r}
+# No changes to the Stan model are necessary for prior predictive checks. 
+file2 <- file.path("clean_files/model_RL_prior_pred_check.stan")
+mod2 <- cmdstan_model(file2, cpp_options = list(stan_threads = TRUE), stanc_options = list("O1"), pedantic = TRUE)
+
+perform_prior_checks <- function(mod, trials) {
+  data <- list(
+    trials = trials,
+    choice = rep(0, trials), # Dummy data, may not be used
+    feedback = rep(0, trials), # Dummy data, may not be used
+    prior_predictive_check = 1 # Indicating a prior predictive check
+  )
+  prior_samples <- mod$sample(
+    data = data,
+    fixed_param = TRUE,
+    iter_sampling = 1000,
+    refresh = 100,
+    threads_per_chain = 2  # Add this line
+  )
+  
+  return(prior_samples)
+}
+
+
+# Assuming 'mod' is your compiled Stan model
+prior_checks <- perform_prior_checks(mod2, trials = 120)
+```
+```{r}
+# Load the packages
+library(cmdstanr)
+library(ggplot2)
+library(posterior)
+library(dplyr)
+
+# Assuming 'prior_checks' contains your Stan model output
+# Extract draws for v1 and v2
+v_values <- as_draws_df(prior_checks$draws(c("v1", "v2")))
+
+
+
+v_long <- v_long %>%
+  group_by(variable) %>%
+  mutate(trial = row_number())  # Assigns a unique trial number within each variable group
+
+ggplot(v_long, aes(x = trial, y = value, color = variable)) +
+  geom_line(alpha = 0.1, show.legend = TRUE) +  # Adjust 'alpha' to your preference
+  labs(title = "Prior Predictive Checks for v1 and v2", x = "Trial", y = "Value") +
+  theme_minimal() +
+  scale_color_manual(values = c("v1" = "blue", "v2" = "red"))  # Optional: Assign colors
+  
+```
+
+
+```{r}
+#MULTIPLE GAMES (NOT USED)s
+First simulate 50 games of each parameter combination
+```{r}
+combinations <- expand.grid(alpha = c(0.1, 0.09), tau = c(0.1, 5))
+trials <- 120
+games <- 50
+
+# Prepare the tibble for concatenating results
+all_results <- tibble()
+
+for(g in 1:games) {
+  for(i in 1:nrow(combinations)) {
+    alpha <- combinations$alpha[i]
+    tau <- combinations$tau[i]
+    
+    results <- tibble('game' = rep(g, trials),
+                      'trial' = 1:trials,
+                      'RL_choice' = rep(NA, trials),
+                      'WSLS_choice' = rep(NA, trials),
+                      'v1' = rep(NA, trials),
+                      'v2' = rep(NA, trials),
+                      'feedback' = rep(NA, trials),
+                      'alpha' = alpha,
+                      'tau' = tau,
+                      'cumulativeRL' = rep(NA, trials))
+
+    results$RL_choice[1] <- rbinom(1, 1, 0.5)
+    results$WSLS_choice[1] <- ifelse(runif(1) > 0.5, 1, 0)
+    results$v1[1] <- 0.5
+    results$v2[1] <- 0.5
+    
+    for(trial in 2:trials){
+      feedback <- ifelse(results$RL_choice[trial-1] == results$WSLS_choice[trial-1], 1, 0)
+      Agent_RL <- RLAgent(alpha, tau, c(results$v1[trial-1], results$v2[trial-1]), results$RL_choice[trial-1], feedback)
+      
+      results$feedback[trial-1] <- feedback
+      results$RL_choice[trial] <- Agent_RL$newChoice
+      results$WSLS_choice[trial] <- WSLSAgent(results$WSLS_choice[trial-1], feedback)
+      results$v1[trial] <- Agent_RL$values[1]
+      results$v2[trial] <- Agent_RL$values[2]
+      results$cumulativeRL[trial] <- sum(results$RL_choice[1:trial]) / trial
+    }
+    
+    last_trial_feedback <- ifelse(results$RL_choice[trials] == results$WSLS_choice[trials], 1, 0)
+    results$feedback[trials] <- last_trial_feedback
+    
+    all_results <- bind_rows(all_results, results)
+  }
+}
+
+```
+
+```{r}
+write_csv(all_results, "data/simdata_multiplevalues_multiplegames.csv")
+```
+
+Visualise choices across trials for 4 combinations (lowlow, lowhigh, highlow, highhigh)
+
+```{r}
+d <- all_results
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# create a new column in d for combination labels
+d <- d %>%
+  mutate(combination = case_when(
+    alpha == 0.1 & tau == 0.1 ~ "LowAlphaLowTau",
+    alpha == 0.9 & tau == 5 ~ "HighAlphaHighTau",
+    alpha == 0.1 & tau == 5 ~ "LowAlphaHighTau",
+    alpha == 0.9 & tau == 0.1 ~ "HighAlphaLowTau",
+    TRUE ~ as.character(NA)  # for any combination that doesn't match the above
+  ))
+
+
+
+# filter out rows without a combination label (there shouldn't be any)
+d_filtered <- d %>% filter(!is.na(combination))
+
+# plot
+ggplot(d_filtered, aes(x = trial)) +
+  geom_line(aes(y = RL_choice, color = "RL Agent")) +
+  geom_line(aes(y = WSLS_choice, color = "WSLS Agent")) +
+  scale_color_manual(values = c("RL Agent" = "red", "WSLS Agent" = "blue")) +
+  facet_wrap(~ combination) +  # creates subfigures for each combination
+  theme_minimal() +
+  labs(color = "Agent Type")  # legend title
+```
+
+
