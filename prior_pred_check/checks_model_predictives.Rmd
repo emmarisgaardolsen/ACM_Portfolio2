@@ -151,7 +151,7 @@ ggplot(d_filtered, aes(x = trial)) +
 
 ## Stan model 
 ```{r}
-file <- file.path("clean_files/model_RL.stan")
+file <- file.path("prior_pred_check/model_RL.stan")
 mod <- cmdstan_model(file, cpp_options = list(stan_threads = TRUE), stanc_options = list("O1"), pedantic = TRUE)
 ```
 
@@ -193,7 +193,7 @@ perform_recovery <- function(subset_df, subset_name) {
 # prior predictive checks
 ```{r}
 # Define the number of trials for the simulation
-trials <- 100  # Feel free to change this number to suit your needs
+trials <- 120  # Feel free to change this number to suit your needs
 
 # Generate placeholder data 
 data_list <- list(trials = trials, 
@@ -212,27 +212,36 @@ prior_predictive <- mod$sample(data = data_list,
 prior_draws_df <- posterior::as_draws_df(prior_predictive$draws())
 
 # Plot histograms for alpha_prior and tau_prior
-par(mfrow = c(1, 2))
+pacman::p_load(gridExtra)
 
-# Plot the histograms
-hist(prior_draws_df$alpha_prior, 
-  main = "Histogram of alpha_prior",
-  xlab = "alpha_prior", col = "skyblue")
+# Create a histogram of alpha_prior
+pl1 <- ggplot(prior_draws_df, aes(x = alpha_prior)) +
+  geom_histogram(color = "black", fill = "skyblue", bins = 30) +
+  labs(title = "Histogram of alpha_prior", x = "alpha_prior", y = "Frequency") +
+  theme_bw()
 
-hist(prior_draws_df$tau_prior,
-  main = "Histogram of tau_prior",
-  xlab = "tau_prior", col = "salmon")
+# Create a histogram of tau_prior
+pl2 <- ggplot(prior_draws_df, aes(x = tau_prior)) +
+  geom_histogram(color = "black", fill = "salmon", bins = 30) +
+  labs(title = "Histogram of tau_prior", x = "tau_prior", y = "Frequency") +
+  theme_bw()
+
+pl3 <- grid.arrange(pl1, pl2, ncol = 2, top = "Prior Predictive Checks on original priors")
+
+# Save the plots
+ggsave("prior_pred_check_org_priors.png", plot = pl3, width = 10, height = 6)
 ```
+
 
 ```{r}
 # Flat priors model
-mod_flat <- cmdstan_model("clean_files/stan_models_ppc/model_RL_flat_priors.stan", cpp_options = list(stan_threads = TRUE), stanc_options = list("O1"), pedantic = TRUE)
+mod_flat <- cmdstan_model("prior_pred_check/stan_models_ppc/model_RL_flat_priors.stan", cpp_options = list(stan_threads = TRUE), stanc_options = list("O1"), pedantic = TRUE)
 
 # Weak priors model
-mod_weak <- cmdstan_model("clean_files/stan_models_ppc/model_RL_weak_priors.stan", cpp_options = list(stan_threads = TRUE), stanc_options = list("O1"), pedantic = TRUE)
+mod_weak <- cmdstan_model("prior_pred_check/stan_models_ppc/model_RL_weak_priors.stan", cpp_options = list(stan_threads = TRUE), stanc_options = list("O1"), pedantic = TRUE)
 
 # Informative priors model
-mod_informed <- cmdstan_model("clean_files/stan_models_ppc/model_RL_informative_priors.stan", cpp_options = list(stan_threads = TRUE), stanc_options = list("O1"), pedantic = TRUE)
+mod_informed <- cmdstan_model("prior_pred_check/stan_models_ppc/model_RL_informative_priors.stan", cpp_options = list(stan_threads = TRUE), stanc_options = list("O1"), pedantic = TRUE)
 
 # data
 trials = 120
@@ -264,18 +273,22 @@ weak_df <- data.frame(mean_choice_prediction = choice_pred_weak$mean_choice_pred
 informed_df <- data.frame(mean_choice_prediction = choice_pred_informed$mean_choice_prediction, prior = 'Informed')
 
 # Combine the data frames
-combined_df <- rbind(flat_df, weak_df, informed_df)
+combined_df <- rbind(flat_df, weak_df, informed_df,)
 
-# Plot using ggplot2
-library(ggplot2)
-ggplot(combined_df, aes(x = mean_choice_prediction, fill = prior)) +
+
+p <- ggplot(combined_df, aes(x = mean_choice_prediction, fill = prior)) +
   geom_histogram(bins = 30, alpha = 0.6, position = "identity") +
-  scale_fill_manual(values=c("Flat"="blue", "Weak"="orange", "Informed"="green")) +
-  labs(title = "Summary of Prior Predictive Checks - Mean Choice Prediction",
+  scale_fill_manual(values=c("Flat"="blue", "Weak"="orange",  "Informed"="green")) +
+  labs(title = "Summary of Prior Predictive Checks",
+       subtitle = "- Mean Choice Prediction",
        x = "Mean Choice Prediction",
        y = "Frequency") +
-  theme_minimal() +
+  theme_bw() +
+  theme(text = element_text(size = 20)) +  # Adjust text size here
   facet_wrap(~prior)
+
+# Save the plot with specified width and height
+ggsave("plot.png", plot = p, width = 10, height = 6)
 ```
 
 
@@ -486,11 +499,11 @@ for (fit_name in fit_names) {
   
   # extract posterior samples
   draws_df <- as_draws_df(samples$draws())
-  
+
   # true values for alpha and tau for the current fit
   true_alpha <- get_true_value(fit_name, "alpha")
   true_tau <- get_true_value(fit_name, "tau")
-  
+
   # Plotting the model's chains for tau
   p_tau <- ggplot(draws_df, aes(.iteration, tau, group = .chain, color = .chain)) +
     geom_line() +
@@ -563,58 +576,6 @@ p1 <- ggplot(d, aes(trial, cumulativeRL, group = alpha, color = alpha)) +
   facet_wrap(.~tau) + 
   theme_classic()
 p1
-```
-
-```{r}
-# No changes to the Stan model are necessary for prior predictive checks. 
-file2 <- file.path("clean_files/model_RL_prior_pred_check.stan")
-mod2 <- cmdstan_model(file2, cpp_options = list(stan_threads = TRUE), stanc_options = list("O1"), pedantic = TRUE)
-
-perform_prior_checks <- function(mod, trials) {
-  data <- list(
-    trials = trials,
-    choice = rep(0, trials), # Dummy data, may not be used
-    feedback = rep(0, trials), # Dummy data, may not be used
-    prior_predictive_check = 1 # Indicating a prior predictive check
-  )
-  prior_samples <- mod$sample(
-    data = data,
-    fixed_param = TRUE,
-    iter_sampling = 1000,
-    refresh = 100,
-    threads_per_chain = 2  # Add this line
-  )
-  
-  return(prior_samples)
-}
-
-
-# Assuming 'mod' is your compiled Stan model
-prior_checks <- perform_prior_checks(mod2, trials = 120)
-```
-```{r}
-# Load the packages
-library(cmdstanr)
-library(ggplot2)
-library(posterior)
-library(dplyr)
-
-# Assuming 'prior_checks' contains your Stan model output
-# Extract draws for v1 and v2
-v_values <- as_draws_df(prior_checks$draws(c("v1", "v2")))
-
-
-
-v_long <- v_long %>%
-  group_by(variable) %>%
-  mutate(trial = row_number())  # Assigns a unique trial number within each variable group
-
-ggplot(v_long, aes(x = trial, y = value, color = variable)) +
-  geom_line(alpha = 0.1, show.legend = TRUE) +  # Adjust 'alpha' to your preference
-  labs(title = "Prior Predictive Checks for v1 and v2", x = "Trial", y = "Value") +
-  theme_minimal() +
-  scale_color_manual(values = c("v1" = "blue", "v2" = "red"))  # Optional: Assign colors
-  
 ```
 
 
