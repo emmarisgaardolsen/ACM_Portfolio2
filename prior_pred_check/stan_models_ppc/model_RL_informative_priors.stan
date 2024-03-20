@@ -80,12 +80,13 @@ generated quantities{
   choice_prediction[1] = bernoulli_rng(prob); // choice on trial 1 is sampled 
   
   // predicting choices on trials 2:n
+  // predicting choices on trials 2:n
   for (t in 2:trials) {  // loop over remaining trials
-    
-        v1[t] = v1[t-1] + alpha * choice[t-1] * (feedback[t-1] - v1[t-1]); // update value of left choice
-        v2[t] = v2[t-1] + alpha * (1 - choice[t-1]) * (feedback[t-1] - v2[t-1]); // update value of right choice
-        
-        prob = 1 / (1 + exp(-tau * (v1[t] - v2[t]))); // choice prob. computed via softmax
-        choice_prediction[t] = bernoulli_rng(prob); // choice on trial t sampled from likelihood function
-    }
+
+      v1[t] = v1[t-1] + alpha_prior * choice[t-1] * (feedback[t-1] - v1[t-1]); // update value of left choice
+      v2[t] = v2[t-1] + alpha_prior * (1 - choice[t-1]) * (feedback[t-1] - v2[t-1]); // update value of right choice
+
+      prob = 1 / (1 + exp(-tau_prior * (v1[t] - v2[t]))); // choice prob. computed via softmax
+      choice_prediction[t] = bernoulli_rng(prob); // choice on trial t sampled from likelihood function
+  }
 }

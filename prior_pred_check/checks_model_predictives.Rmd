@@ -19,7 +19,6 @@ pacman::p_load(cmdstanr,
 
 # A reinforcement learning agent
 ```{r}
-
 ValueUpdate <- function(value,choice,alpha,feedback){
 
   PE <- feedback - value
@@ -35,7 +34,6 @@ softmax_func <-  function(x, tau) {
   return(prob)
 }
 
-
 RLAgent <- function(alpha, tau, value, choice, feedback){
   values <- ValueUpdate(value, choice, alpha, feedback)
   choice_probabilities <- softmax_func(values, tau)
@@ -43,8 +41,6 @@ RLAgent <- function(alpha, tau, value, choice, feedback){
   outcome <- list(newChoice = newChoice, values = values)
   return(outcome)
 }
-
-
 ```
 
 # WSLS Agent
@@ -107,7 +103,7 @@ for(i in 1:nrow(combinations)) {
 ```
 
 ```{r}
-d <- all_results 
+d <- all_results
 ```
 
 ```{r}
@@ -191,6 +187,8 @@ perform_recovery <- function(subset_df, subset_name) {
 ```
 
 # prior predictive checks
+
+## On the original priors
 ```{r}
 # Define the number of trials for the simulation
 trials <- 120  # Feel free to change this number to suit your needs
@@ -230,9 +228,10 @@ pl3 <- grid.arrange(pl1, pl2, ncol = 2, top = "Prior Predictive Checks on origin
 
 # Save the plots
 ggsave("prior_pred_check_org_priors.png", plot = pl3, width = 10, height = 6)
+
 ```
 
-
+## on flat, medium-flat (weak), and informative priors
 ```{r}
 # Flat priors model
 mod_flat <- cmdstan_model("prior_pred_check/stan_models_ppc/model_RL_flat_priors.stan", cpp_options = list(stan_threads = TRUE), stanc_options = list("O1"), pedantic = TRUE)
@@ -272,8 +271,44 @@ flat_df <- data.frame(mean_choice_prediction = choice_pred_flat$mean_choice_pred
 weak_df <- data.frame(mean_choice_prediction = choice_pred_weak$mean_choice_prediction, prior = 'Weak')
 informed_df <- data.frame(mean_choice_prediction = choice_pred_informed$mean_choice_prediction, prior = 'Informed')
 
+# plot flat_df only
+plt3 <- ggplot(flat_df, aes(x = mean_choice_prediction)) +
+  geom_histogram(bins = 30, alpha = 0.6, position = "identity") +
+  labs(title = "Summary of Prior Predictive Checks",
+       subtitle = "- Mean Choice Prediction",
+       x = "Mean Choice Prediction",
+       y = "Frequency") +
+  theme_bw() +
+  theme(text = element_text(size = 20)) +  # Adjust text size here
+  facet_wrap(~prior)
+
+# plot flat_df only
+plt4 <- ggplot(weak_df, aes(x = mean_choice_prediction)) +
+  geom_histogram(bins = 30, alpha = 0.6, position = "identity") +
+  labs(title = "Summary of Prior Predictive Checks",
+       subtitle = "- Mean Choice Prediction",
+       x = "Mean Choice Prediction",
+       y = "Frequency") +
+  theme_bw() +
+  theme(text = element_text(size = 20)) +  # Adjust text size here
+  facet_wrap(~prior)
+
+print(plt4)
+
+plt5 <- ggplot(informed_df, aes(x = mean_choice_prediction)) +
+  geom_histogram(bins = 30, alpha = 0.6, position = "identity") +
+  labs(title = "Summary of Prior Predictive Checks",
+       subtitle = "- Mean Choice Prediction",
+       x = "Mean Choice Prediction",
+       y = "Frequency") +
+  theme_bw() +
+  theme(text = element_text(size = 20)) +  # Adjust text size here
+  facet_wrap(~prior)
+
+grid.arrange(plt3, plt4, plt5, ncol = 3)
+
 # Combine the data frames
-combined_df <- rbind(flat_df, weak_df, informed_df,)
+combined_df <- rbind(flat_df, weak_df, informed_df)
 
 
 p <- ggplot(combined_df, aes(x = mean_choice_prediction, fill = prior)) +
@@ -287,8 +322,17 @@ p <- ggplot(combined_df, aes(x = mean_choice_prediction, fill = prior)) +
   theme(text = element_text(size = 20)) +  # Adjust text size here
   facet_wrap(~prior)
 
+print(p)
+
 # Save the plot with specified width and height
 ggsave("plot.png", plot = p, width = 10, height = 6)
+```
+
+# Posterior predictive checks
+
+```{r}
+file <- file.path("prior_pred_check/model_RL.stan")
+mod <- cmdstan_model(file, cpp_options = list(stan_threads = TRUE), stanc_options = list("O1"), pedantic = TRUE)
 ```
 
 
@@ -296,10 +340,14 @@ ggsave("plot.png", plot = p, width = 10, height = 6)
 ```{r}
 combination_labels <- unique(d$combination)
 
-results <- lapply(combination_labels, function(label) {
+fit <- lapply(combination_labels, function(label) {
   subset_df <- d[d$combination == label, ]
   perform_recovery(subset_df, label)
 })
+```
+
+
+```{r}
 ```
 
 ## First plotting the prior distributions
@@ -576,99 +624,6 @@ p1 <- ggplot(d, aes(trial, cumulativeRL, group = alpha, color = alpha)) +
   facet_wrap(.~tau) + 
   theme_classic()
 p1
-```
-
-
-```{r}
-#MULTIPLE GAMES (NOT USED)s
-First simulate 50 games of each parameter combination
-```{r}
-combinations <- expand.grid(alpha = c(0.1, 0.09), tau = c(0.1, 5))
-trials <- 120
-games <- 50
-
-# Prepare the tibble for concatenating results
-all_results <- tibble()
-
-for(g in 1:games) {
-  for(i in 1:nrow(combinations)) {
-    alpha <- combinations$alpha[i]
-    tau <- combinations$tau[i]
-    
-    results <- tibble('game' = rep(g, trials),
-                      'trial' = 1:trials,
-                      'RL_choice' = rep(NA, trials),
-                      'WSLS_choice' = rep(NA, trials),
-                      'v1' = rep(NA, trials),
-                      'v2' = rep(NA, trials),
-                      'feedback' = rep(NA, trials),
-                      'alpha' = alpha,
-                      'tau' = tau,
-                      'cumulativeRL' = rep(NA, trials))
-
-    results$RL_choice[1] <- rbinom(1, 1, 0.5)
-    results$WSLS_choice[1] <- ifelse(runif(1) > 0.5, 1, 0)
-    results$v1[1] <- 0.5
-    results$v2[1] <- 0.5
-    
-    for(trial in 2:trials){
-      feedback <- ifelse(results$RL_choice[trial-1] == results$WSLS_choice[trial-1], 1, 0)
-      Agent_RL <- RLAgent(alpha, tau, c(results$v1[trial-1], results$v2[trial-1]), results$RL_choice[trial-1], feedback)
-      
-      results$feedback[trial-1] <- feedback
-      results$RL_choice[trial] <- Agent_RL$newChoice
-      results$WSLS_choice[trial] <- WSLSAgent(results$WSLS_choice[trial-1], feedback)
-      results$v1[trial] <- Agent_RL$values[1]
-      results$v2[trial] <- Agent_RL$values[2]
-      results$cumulativeRL[trial] <- sum(results$RL_choice[1:trial]) / trial
-    }
-    
-    last_trial_feedback <- ifelse(results$RL_choice[trials] == results$WSLS_choice[trials], 1, 0)
-    results$feedback[trials] <- last_trial_feedback
-    
-    all_results <- bind_rows(all_results, results)
-  }
-}
-
-```
-
-```{r}
-write_csv(all_results, "data/simdata_multiplevalues_multiplegames.csv")
-```
-
-Visualise choices across trials for 4 combinations (lowlow, lowhigh, highlow, highhigh)
-
-```{r}
-d <- all_results
-```
-
-```{r}
-library(ggplot2)
-library(dplyr)
-
-# create a new column in d for combination labels
-d <- d %>%
-  mutate(combination = case_when(
-    alpha == 0.1 & tau == 0.1 ~ "LowAlphaLowTau",
-    alpha == 0.9 & tau == 5 ~ "HighAlphaHighTau",
-    alpha == 0.1 & tau == 5 ~ "LowAlphaHighTau",
-    alpha == 0.9 & tau == 0.1 ~ "HighAlphaLowTau",
-    TRUE ~ as.character(NA)  # for any combination that doesn't match the above
-  ))
-
-
-
-# filter out rows without a combination label (there shouldn't be any)
-d_filtered <- d %>% filter(!is.na(combination))
-
-# plot
-ggplot(d_filtered, aes(x = trial)) +
-  geom_line(aes(y = RL_choice, color = "RL Agent")) +
-  geom_line(aes(y = WSLS_choice, color = "WSLS Agent")) +
-  scale_color_manual(values = c("RL Agent" = "red", "WSLS Agent" = "blue")) +
-  facet_wrap(~ combination) +  # creates subfigures for each combination
-  theme_minimal() +
-  labs(color = "Agent Type")  # legend title
 ```
 
 
